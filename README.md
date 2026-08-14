@@ -67,15 +67,25 @@ exactly two roles:
 | Sign in to the web page | ❌ | ✅ |
 | Filing limits (title ≤ 500 B, body ≤ 64 KB, 120 adds/hour) | applies | applies |
 
-- **`publish`** is for agent machines — mint **one per machine**, named after it
-  (`docket token new -role publish laptop`). The name is stamped as `via` on every
-  item that machine files, so you always know who filed what, and revoking one
-  machine never touches the others. A publish token's `tools/list` shows *only*
-  `todo_add`; calling anything else returns the same "unknown tool" error as a tool
-  that doesn't exist, so a leaked publish token can file noise but cannot read,
-  edit, or even map the backlog.
-- **`review`** is for you — one or two ever exist. It holds the full tool set and is
-  what the web page accepts at sign-in.
+The role is a property of the **token, not of who holds it** — agents can hold
+review tokens. Pick per machine, based on what you want that machine doing:
+
+- **`review`** is the full-access role: for the web page, and for any agent you
+  want *working* the backlog — listing items, picking one up, closing it as done
+  when finished. If your agents should both file and pick up todos, give them
+  review tokens.
+- **`publish`** is deliberate least privilege for machines that should only ever
+  *file*: a box exposed to untrusted input, a CI job, someone else's machine.
+  Its `tools/list` shows only `todo_add`, and calling anything else returns the
+  same "unknown tool" error as a tool that doesn't exist — so if that machine is
+  ever steered by a prompt injection, the attacker can add noise to your backlog
+  but cannot read your cross-project plans out of it. If that trade-off doesn't
+  matter to you, simply never mint one.
+
+Either way, mint **one token per machine**, named after it
+(`docket token new -role review laptop`): the name is stamped as `via` on every
+item that machine files, so you always know who filed what, and revoking one
+machine never touches the others.
 
 There is no third role, and no admin role: creating, revoking, and listing tokens
 happens only through the `docket token` CLI on the machine that holds the database
@@ -83,7 +93,8 @@ happens only through the `docket token` CLI on the machine that holds the databa
 
 ## Connecting a real agent
 
-Give each agent machine its own **publish** token (see the roles above).
+Mint each agent machine its own token — **review** if it should also read and pick
+up work, **publish** if it should only file (see the roles above).
 
 **Claude Code:**
 
