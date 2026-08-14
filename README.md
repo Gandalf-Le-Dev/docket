@@ -1,49 +1,72 @@
 # Docket
 
-**A self-hosted backlog any agent can write to.**
+**A self-hosted backlog any AI agent can write to.**
 
-Agents keep noticing work that is real but out of scope for the repo they are in, and
-today that work has nowhere to go — so it gets dropped. Docket is the destination: one
-small MCP server, self-hosted on the fleet, that any agent on any box can publish a
-todo to, and that the owner can review and edit from any agent, any scope, or a phone.
+If you run coding agents (Claude Code, or anything else that speaks
+[MCP](https://modelcontextprotocol.io)), you have seen this: mid-task, the agent
+notices work that is real but belongs to a *different* project — and there is nowhere
+to put it. Filing it in the current repo's tracker pollutes that tracker; saying it in
+chat evaporates; so it gets dropped.
 
-- `todo_add` from anywhere, with `source` recording who noticed it
-- review, edit, and close through MCP or a minimal built-in web page
-- one Go binary, one SQLite file, deployed with [Pilot](https://github.com/Gandalf-Le-Dev/pilot)
-- publish is cheap, read is privileged: per-box add-only tokens, one review token
-- speaks MCP spec revision **2026-07-28** (stateless, per-request metadata) and the
-  2025-era handshake revisions alike, from one endpoint
+Docket is the destination. One small server you host yourself:
 
-It is small on purpose — the value is that it exists everywhere, not that it is a good
-project-management tool. No sprints, no assignees, no boards, ever.
+- **Agents file items** with a `todo_add` tool, from any machine, any repo, any
+  platform — each carrying a `source` that records who noticed it.
+- **You review them** from a phone-friendly built-in web page, or from any agent via
+  the full tool set: list, edit, close as *done*, or close as *dropped* ("deliberately
+  not doing this" is a verdict worth keeping).
+- **Writes are cheap, reads are privileged.** Each agent machine gets an *add-only*
+  token: it can file, but it cannot read, list, or even discover the rest of the
+  backlog. Only your *review* token sees everything.
 
-See [DESIGN.md](DESIGN.md) for the full design: the name, the verbs, the schema, auth,
-and how it deploys. Designed against
-[issue #1](https://github.com/Gandalf-Le-Dev/docket/issues/1).
+It is one Go binary and one SQLite file. Small on purpose: no sprints, no assignees,
+no boards, ever — the value is that it exists everywhere, not that it is a good
+project-management tool. The full design rationale is in [DESIGN.md](DESIGN.md).
 
-## Quick start
+## Try it in two minutes
+
+You need Go 1.25+ (or use [Docker](#running-in-docker) below).
 
 ```sh
+git clone https://github.com/Gandalf-Le-Dev/docket && cd docket
 go build ./cmd/docket
 
-# Mint tokens. The plaintext is printed exactly once; only a hash is stored.
-./docket token new -db ./docket.db -role review  phone     # full access — yours
-./docket token new -db ./docket.db -role publish box-nyc   # add-only — one per agent box
+# 1. Mint your tokens. Each prints its secret exactly once — save them.
+./docket token new -db ./docket.db -role review  me       # full access — for you
+./docket token new -db ./docket.db -role publish laptop   # add-only — for an agent
 
-./docket serve -db ./docket.db -addr :8340
+# 2. Run the server.
+./docket serve -db ./docket.db -addr 127.0.0.1:8340
 ```
 
-Three surfaces on one port:
+Now open <http://127.0.0.1:8340>, paste the **review** token, and you are looking at
+an empty backlog. File something into it from the command line, as an agent would:
 
-| Path       | Surface                                   | Auth                       |
-|------------|-------------------------------------------|----------------------------|
-| `/mcp`     | MCP, streamable HTTP, POST-only           | `Authorization: Bearer …`  |
-| `/`        | Web review page (phone-friendly)          | Review token, entered once |
-| `/healthz` | Liveness + DB ping                        | None                       |
+```sh
+curl -s http://127.0.0.1:8340/mcp \
+  -H "Authorization: Bearer dkt_YOUR_PUBLISH_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add",
+       "arguments":{"title":"my first item","source":"README quick start"}}}'
+```
 
-## Wiring up an agent
+Refresh the page — the item is there. That is the whole loop: agents POST in,
+you review on the page.
 
-Each agent box gets the standard HTTP MCP client config with its own publish token:
+## Connecting a real agent
+
+Give each agent machine its **own publish token** (`docket token new -role publish
+NAME` — the name shows up as `via` on every item that machine files, so you always
+know who filed what, and revoking one machine never touches the others).
+
+**Claude Code:**
+
+```sh
+claude mcp add --transport http docket https://docket.example.net/mcp \
+  --header "Authorization: Bearer dkt_YOUR_PUBLISH_TOKEN"
+```
+
+**Any other MCP client** — standard HTTP server config:
 
 ```json
 {
@@ -51,39 +74,107 @@ Each agent box gets the standard HTTP MCP client config with its own publish tok
     "docket": {
       "type": "http",
       "url": "https://docket.example.net/mcp",
-      "headers": { "Authorization": "Bearer ${DOCKET_TOKEN}" }
+      "headers": { "Authorization": "Bearer dkt_YOUR_PUBLISH_TOKEN" }
     }
   }
 }
 ```
 
-A publish token sees exactly one tool, `todo_add`, and cannot read, edit, or even list
-the backlog. A review token gets the full set: `todo_list`, `todo_get`, `todo_update`,
-`todo_close`, and `todo_scopes`.
+The server speaks both current MCP revisions from one endpoint — the stateless
+2026-07-28 protocol and the 2025-era `initialize` handshake — so old and new clients
+both just work.
 
-## The verbs
+Optionally add a line to the agent's standing instructions (`CLAUDE.md` or
+equivalent): *"Work that is real but out of scope for the current repo goes to
+Docket's `todo_add`, with `source` set to where you noticed it."* The tool's own
+description says the same, so even an uninstructed agent files things sensibly.
 
-| Tool | Role | Does |
+To manage the backlog *from* an agent (triage from your desktop, say), add the same
+config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
+`todo_update`, `todo_close`, and `todo_scopes`.
+
+## The tools
+
+| Tool | Token role | Does |
 |------|------|------|
-| `todo_add {title, body?, scope?, source?}` | publish + review | File an item. Exact-match dedupe against open items returns the existing id with `duplicate: true`. |
-| `todo_list {scope?, state?, q?}` | review | Read the backlog. `state` defaults to `open`. |
+| `todo_add {title, body?, scope?, source?}` | publish + review | File an item. Filing the same title+scope twice while open returns the existing id with `duplicate: true` instead of a second copy. |
+| `todo_list {scope?, state?, q?}` | review | Read the backlog. `state`: `open` (default), `done`, `dropped`, `all`; `q` searches title and body. |
 | `todo_get {id}` | review | One item. |
-| `todo_update {id, title?, body?, scope?, state?}` | review | Edit anything; `state: open` reopens. |
-| `todo_close {id, outcome?, reason?}` | review | Verdict: `done` (default) or `dropped`. |
-| `todo_scopes {}` | review | Scopes in use with open counts. |
+| `todo_update {id, title?, body?, scope?, state?}` | review | Edit anything; `state: "open"` reopens a closed item. |
+| `todo_close {id, outcome?, reason?}` | review | Close with a verdict: `done` (default) or `dropped`. `reason` is appended to the body. |
+| `todo_scopes {}` | review | The scopes in use, with open counts. |
 
-## Operating it
+`scope` is a freeform grouping label ("hopbox", "personal", "idea") — lowercased,
+never a fixed list. When names drift apart, the web page has a rename that merges
+them.
+
+## Running in Docker
+
+Images are published on tagged releases:
 
 ```sh
-docket token list                 # who holds tokens
-docket token revoke box-nyc       # unplug one box; re-minting the name rotates it
+docker run -d --name docket \
+  -p 127.0.0.1:8340:8340 \
+  -v docket-data:/var/lib/docket \
+  ghcr.io/gandalf-le-dev/docket:v0.1.0
+
+docker exec docket docket token new -role review me
+docker exec docket docket token new -role publish laptop
 ```
 
-The database is one SQLite file (default `/var/lib/docket/docket.db`, override with
-`-db` or `DOCKET_DB`). Backup is copying the file. Guard rails on publish: title ≤ 500
-bytes, body ≤ 64 KB, 120 adds per hour per token.
+Or the same thing as `compose.yaml`:
 
-The container image is published as `ghcr.io/gandalf-le-dev/docket` on tagged
-releases; `DESIGN.md` §8 has the Pilot `service.yaml`/`compose.yaml` for deploying it
-— including the named-volume detail that keeps the database out of Pilot's immutable
-release directories.
+```yaml
+services:
+  docket:
+    image: ghcr.io/gandalf-le-dev/docket:v0.1.0
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8340:8340"   # loopback only — put TLS in front, see below
+    volumes:
+      - docket-data:/var/lib/docket
+volumes:
+  docket-data:
+```
+
+## Deploying for real
+
+Two rules, then any host works:
+
+1. **Terminate TLS in front of it.** Tokens travel in the `Authorization` header and
+   a cookie; Docket itself serves plain HTTP on `:8340` and expects a reverse proxy
+   (Caddy, nginx, Traefik) to provide HTTPS. Bind the container port to loopback, as
+   above, so nothing reaches it *except* through the proxy.
+2. **Put the database somewhere that survives redeploys.** Everything lives in one
+   SQLite file (default `/var/lib/docket/docket.db`; override with `-db` or
+   `DOCKET_DB`). In Docker that means a named volume — never a bind mount inside a
+   directory your deploy tool replaces. Backup is copying the file.
+
+`GET /healthz` returns 200 only when the database answers — point your health checks
+at it.
+
+This repo's own deployment uses [Pilot](https://github.com/Gandalf-Le-Dev/pilot);
+the exact `service.yaml`/`compose.yaml` for that setup is in
+[DESIGN.md §8](DESIGN.md#8-deployment-with-pilot).
+
+## Day-to-day operation
+
+```sh
+docket token list             # every token, role, and status
+docket token revoke laptop    # that machine can no longer file
+docket token new -role publish laptop   # re-minting a revoked name rotates it
+```
+
+Abuse limits on filing: title ≤ 500 bytes, body ≤ 64 KB, and 120 adds per hour per
+token — a compromised machine can make noise, but it cannot fill your disk, and `via`
+tells you exactly which token to revoke.
+
+## Development
+
+```sh
+go test ./...        # store, MCP protocol (both revisions), web UI
+go build ./cmd/docket
+```
+
+No CGO (the SQLite driver is pure Go), so cross-compiling is
+`GOOS=linux GOARCH=amd64 go build ./cmd/docket`.
