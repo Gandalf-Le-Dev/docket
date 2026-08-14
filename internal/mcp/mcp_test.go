@@ -227,10 +227,30 @@ func TestResultsCarryResultType(t *testing.T) {
 		return res.ResultType
 	}
 
+	// Caching hints are mandatory on the cacheable results (server/discover
+	// and tools/list) — and private, because both vary by the token's role.
+	hints := func(r rpcResp) (int, string) {
+		var res struct {
+			TTLMs      int    `json:"ttlMs"`
+			CacheScope string `json:"cacheScope"`
+		}
+		json.Unmarshal(r.Result, &res)
+		return res.TTLMs, res.CacheScope
+	}
+
 	// tools/list, both eras served by the same handler.
 	_, r := e.call(t, e.review, nil, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
 	if got := resultType(r); got != "complete" {
 		t.Errorf("tools/list resultType = %q, want complete", got)
+	}
+	if ttl, scope := hints(r); ttl <= 0 || scope != "private" {
+		t.Errorf("tools/list hints = %d %q, want positive ttl and private", ttl, scope)
+	}
+
+	// server/discover is the other cacheable result.
+	_, r = e.call(t, e.review, nil, `{"jsonrpc":"2.0","id":9,"method":"server/discover"}`)
+	if ttl, scope := hints(r); ttl <= 0 || scope != "private" {
+		t.Errorf("server/discover hints = %d %q, want positive ttl and private", ttl, scope)
 	}
 
 	// ping.

@@ -315,7 +315,7 @@ name: docket
 
 services:
   docket:
-    image: ghcr.io/gandalf-le-dev/docket:v0.1.0   # pinned; pilot doctor insists
+    image: ghcr.io/gandalf-le-dev/docket:v0.1.2   # pinned; pilot doctor insists
     container_name: docket   # stable name — `docker exec docket …` mints tokens
     restart: unless-stopped
     ports:

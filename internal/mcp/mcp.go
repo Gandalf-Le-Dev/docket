@@ -27,6 +27,13 @@ import (
 
 const ModernVersion = "2026-07-28"
 
+// cacheTTLMs rides on the results the 2026-07-28 revision declares cacheable
+// (server/discover and tools/list here), which must carry caching hints. Five
+// minutes, and always cacheScope "private": both results vary by the token's
+// role — a shared cache must never serve one token's tool surface to another.
+// tools/call and ping are not cacheable and carry no hints.
+const cacheTTLMs = 300_000
+
 var legacyVersions = map[string]bool{
 	"2025-03-26": true,
 	"2025-06-18": true,
@@ -167,6 +174,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "server/discover":
 		writeResult(w, req.ID, map[string]any{
 			"resultType":        "complete",
+			"ttlMs":             cacheTTLMs,
+			"cacheScope":        "private",
 			"supportedVersions": SupportedVersions,
 			"capabilities":      map[string]any{"tools": map[string]any{}},
 			"_meta": map[string]any{
@@ -197,7 +206,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeResult(w, req.ID, map[string]any{"resultType": "complete"})
 
 	case "tools/list":
-		writeResult(w, req.ID, map[string]any{"resultType": "complete", "tools": toolDefs(role)})
+		writeResult(w, req.ID, map[string]any{
+			"resultType": "complete",
+			"ttlMs":      cacheTTLMs,
+			"cacheScope": "private",
+			"tools":      toolDefs(role),
+		})
 
 	case "tools/call":
 		h.handleToolCall(w, &req, tokenName, role)
