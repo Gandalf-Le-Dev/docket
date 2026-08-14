@@ -53,11 +53,37 @@ curl -s http://127.0.0.1:8340/mcp \
 Refresh the page — the item is there. That is the whole loop: agents POST in,
 you review on the page.
 
+## Tokens and roles
+
+Every request to Docket authenticates with a token, and every token has one of
+exactly two roles:
+
+| Capability | `publish` | `review` |
+|---|:---:|:---:|
+| File items (`todo_add`) | ✅ | ✅ |
+| Read the backlog (`todo_list`, `todo_get`) | ❌ | ✅ |
+| Edit and close items (`todo_update`, `todo_close`) | ❌ | ✅ |
+| See which scopes exist (`todo_scopes`) | ❌ | ✅ |
+| Sign in to the web page | ❌ | ✅ |
+| Filing limits (title ≤ 500 B, body ≤ 64 KB, 120 adds/hour) | applies | applies |
+
+- **`publish`** is for agent machines — mint **one per machine**, named after it
+  (`docket token new -role publish laptop`). The name is stamped as `via` on every
+  item that machine files, so you always know who filed what, and revoking one
+  machine never touches the others. A publish token's `tools/list` shows *only*
+  `todo_add`; calling anything else returns the same "unknown tool" error as a tool
+  that doesn't exist, so a leaked publish token can file noise but cannot read,
+  edit, or even map the backlog.
+- **`review`** is for you — one or two ever exist. It holds the full tool set and is
+  what the web page accepts at sign-in.
+
+There is no third role, and no admin role: creating, revoking, and listing tokens
+happens only through the `docket token` CLI on the machine that holds the database
+(see [Day-to-day operation](#day-to-day-operation)) — never over the network.
+
 ## Connecting a real agent
 
-Give each agent machine its **own publish token** (`docket token new -role publish
-NAME` — the name shows up as `via` on every item that machine files, so you always
-know who filed what, and revoking one machine never touches the others).
+Give each agent machine its own **publish** token (see the roles above).
 
 **Claude Code:**
 
