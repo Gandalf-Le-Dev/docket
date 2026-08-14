@@ -44,7 +44,7 @@ an empty backlog. File something into it from the command line, as an agent woul
 
 ```sh
 curl -s http://127.0.0.1:8340/mcp \
-  -H "Authorization: Bearer dkt_YOUR_PUBLISH_TOKEN" \
+  -H "Authorization: Bearer dkt_YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add",
        "arguments":{"title":"my first item","source":"README quick start"}}}'
@@ -100,7 +100,7 @@ up work, **publish** if it should only file (see the roles above).
 
 ```sh
 claude mcp add --transport http docket https://docket.example.net/mcp \
-  --header "Authorization: Bearer dkt_YOUR_PUBLISH_TOKEN"
+  --header "Authorization: Bearer dkt_YOUR_TOKEN"
 ```
 
 **Any other MCP client** — standard HTTP server config:
@@ -111,7 +111,7 @@ claude mcp add --transport http docket https://docket.example.net/mcp \
     "docket": {
       "type": "http",
       "url": "https://docket.example.net/mcp",
-      "headers": { "Authorization": "Bearer dkt_YOUR_PUBLISH_TOKEN" }
+      "headers": { "Authorization": "Bearer dkt_YOUR_TOKEN" }
     }
   }
 }
