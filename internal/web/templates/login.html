@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docket — sign in</title>
+  {{template "style" .}}
+</head>
+<body>
+<main>
+  <header class="top"><h1>Docket</h1></header>
+  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+  <p>Paste a <strong>review</strong> token to open the backlog. It is stored as a
+  cookie on this device; you only do this once.</p>
+  <form method="post" action="/login">
+    <label for="token">Review token</label>
+    <input type="password" id="token" name="token" autocomplete="current-password" autofocus>
+    <p><button type="submit" class="primary">Sign in</button></p>
+  </form>
+</main>
+</body>
+</html>

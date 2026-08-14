@@ -1,0 +1,76 @@
+{{define "style"}}
+<style>
+  :root {
+    --bg: #f6f5f2; --card: #ffffff; --ink: #24292f; --muted: #6b7280;
+    --line: #e4e2dc; --accent: #3b5f4a; --accent-ink: #ffffff; --danger: #8a4b3c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16181a; --card: #1f2226; --ink: #e6e4df; --muted: #9aa0a6;
+      --line: #33373c; --accent: #79a88e; --accent-ink: #16181a; --danger: #cf8b78;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 42rem; margin: 0 auto; padding: 1rem 1rem 4rem; }
+  header.top { display: flex; align-items: baseline; gap: 0.75rem; margin: 0.5rem 0 1rem; }
+  header.top h1 { font-size: 1.4rem; margin: 0; }
+  header.top form { margin-left: auto; }
+  a { color: var(--accent); }
+  .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .tabs a {
+    text-decoration: none; padding: 0.25rem 0.7rem; border-radius: 999px;
+    border: 1px solid var(--line); color: var(--ink); font-size: 0.9rem; background: var(--card);
+  }
+  .tabs a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .error {
+    background: var(--card); border: 1px solid var(--danger); color: var(--danger);
+    border-radius: 8px; padding: 0.5rem 0.8rem; margin-bottom: 1rem;
+  }
+  h2.scope {
+    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--muted); margin: 1.4rem 0 0.5rem;
+  }
+  h2.scope a { color: inherit; }
+  details.todo, details.panel {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 0.5rem; overflow: hidden;
+  }
+  details.todo summary, details.panel summary {
+    cursor: pointer; padding: 0.6rem 0.8rem; list-style: none;
+    display: flex; gap: 0.5rem; align-items: baseline;
+  }
+  details.todo summary::-webkit-details-marker,
+  details.panel summary::-webkit-details-marker { display: none; }
+  summary .id { color: var(--muted); font-size: 0.8rem; flex-shrink: 0; }
+  summary .state-done { color: var(--accent); font-size: 0.8rem; }
+  summary .state-dropped { color: var(--danger); font-size: 0.8rem; }
+  .todo-detail { padding: 0 0.8rem 0.8rem; border-top: 1px solid var(--line); }
+  .todo-detail .body { white-space: pre-wrap; margin: 0.6rem 0; word-break: break-word; }
+  .meta { color: var(--muted); font-size: 0.8rem; margin: 0.4rem 0 0.6rem; }
+  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+  .actions form { display: inline-flex; gap: 0.4rem; align-items: center; }
+  button {
+    font: inherit; font-size: 0.85rem; padding: 0.3rem 0.8rem; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
+  }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.danger { color: var(--danger); border-color: var(--danger); }
+  input[type="text"], input[type="password"], textarea, select {
+    font: inherit; width: 100%; padding: 0.45rem 0.6rem; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  }
+  textarea { min-height: 5rem; resize: vertical; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0.15rem; }
+  .row { display: flex; gap: 0.5rem; }
+  .row > * { flex: 1; }
+  .inline-input { width: auto; flex: 1; }
+  .panel-body { padding: 0 0.8rem 0.8rem; border-top: 1px solid var(--line); }
+  .searchbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+  .empty { color: var(--muted); margin: 2rem 0; text-align: center; }
+  .footer-tools { margin-top: 2rem; }
+</style>
+{{end}}

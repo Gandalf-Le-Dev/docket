@@ -1,0 +1,423 @@
+package mcp
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"testing"
+
+	"github.com/Gandalf-Le-Dev/docket/internal/store"
+)
+
+type env struct {
+	srv     *httptest.Server
+	store   *store.Store
+	publish string
+	review  string
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	s, err := store.Open(filepath.Join(t.TempDir(), "test.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { s.Close() })
+
+	pub, err := s.CreateToken("box-1", "publish")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rev, err := s.CreateToken("phone", "review")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	srv := httptest.NewServer(NewHandler(s, "test"))
+	t.Cleanup(srv.Close)
+	return &env{srv: srv, store: s, publish: pub, review: rev}
+}
+
+type rpcResp struct {
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Code    int             `json:"code"`
+		Message string          `json:"message"`
+		Data    json.RawMessage `json:"data"`
+	} `json:"error"`
+}
+
+// call POSTs one JSON-RPC request. headers may be nil (legacy, headerless).
+func (e *env) call(t *testing.T, token string, headers map[string]string, body string) (int, rpcResp) {
+	t.Helper()
+	req, _ := http.NewRequest("POST", e.srv.URL+"/mcp", bytes.NewReader([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json, text/event-stream")
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var out rpcResp
+	json.NewDecoder(resp.Body).Decode(&out)
+	return resp.StatusCode, out
+}
+
+// modern wraps arguments in a 2026-07-28-shaped tools/call with full headers.
+func modernCall(name string, args string) (map[string]string, string) {
+	headers := map[string]string{
+		"MCP-Protocol-Version": ModernVersion,
+		"Mcp-Method":           "tools/call",
+		"Mcp-Name":             name,
+	}
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+		"name":%q,"arguments":%s,
+		"_meta":{"io.modelcontextprotocol/protocolVersion":%q}}}`, name, args, ModernVersion)
+	return headers, body
+}
+
+func structured(t *testing.T, r rpcResp) map[string]any {
+	t.Helper()
+	if r.Error != nil {
+		t.Fatalf("rpc error: %d %s", r.Error.Code, r.Error.Message)
+	}
+	var res struct {
+		StructuredContent map[string]any `json:"structuredContent"`
+		IsError           bool           `json:"isError"`
+		Content           []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(r.Result, &res); err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("tool error: %s", res.Content[0].Text)
+	}
+	return res.StructuredContent
+}
+
+func toolErrText(t *testing.T, r rpcResp) string {
+	t.Helper()
+	var res struct {
+		IsError bool `json:"isError"`
+		Content []struct {
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	json.Unmarshal(r.Result, &res)
+	if !res.IsError {
+		t.Fatalf("expected tool error, got %s", r.Result)
+	}
+	return res.Content[0].Text
+}
+
+func TestAuthRequired(t *testing.T) {
+	e := newEnv(t)
+	status, _ := e.call(t, "", nil, `{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("no token: %d", status)
+	}
+	status, _ = e.call(t, "dkt_bogus", nil, `{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+	if status != http.StatusUnauthorized {
+		t.Fatalf("bad token: %d", status)
+	}
+}
+
+func TestMethodNotAllowed(t *testing.T) {
+	e := newEnv(t)
+	for _, method := range []string{"GET", "DELETE"} {
+		req, _ := http.NewRequest(method, e.srv.URL+"/mcp", nil)
+		req.Header.Set("Authorization", "Bearer "+e.review)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusMethodNotAllowed {
+			t.Fatalf("%s: %d", method, resp.StatusCode)
+		}
+	}
+}
+
+func TestLegacyHandshake(t *testing.T) {
+	e := newEnv(t)
+
+	// Headerless initialize, as a 2025-03-26 client would send it.
+	status, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}`)
+	if status != http.StatusOK || r.Error != nil {
+		t.Fatalf("initialize: %d %+v", status, r.Error)
+	}
+	var init struct {
+		ProtocolVersion string `json:"protocolVersion"`
+		ServerInfo      struct {
+			Name string `json:"name"`
+		} `json:"serverInfo"`
+		Instructions string `json:"instructions"`
+	}
+	json.Unmarshal(r.Result, &init)
+	if init.ProtocolVersion != "2025-06-18" || init.ServerInfo.Name != "docket" || init.Instructions == "" {
+		t.Fatalf("initialize result: %+v", init)
+	}
+
+	// An unsupported handshake version negotiates down to our newest legacy.
+	_, r = e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"1999-01-01"}}`)
+	json.Unmarshal(r.Result, &init)
+	if init.ProtocolVersion != "2025-06-18" {
+		t.Fatalf("negotiation: %q", init.ProtocolVersion)
+	}
+
+	// notifications/initialized is a notification: 202, no body.
+	status, _ = e.call(t, e.publish, nil, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	if status != http.StatusAccepted {
+		t.Fatalf("notification: %d", status)
+	}
+}
+
+func TestRoleFiltersToolList(t *testing.T) {
+	e := newEnv(t)
+	names := func(token string) []string {
+		_, r := e.call(t, token, nil, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+		var res struct {
+			Tools []struct {
+				Name string `json:"name"`
+			} `json:"tools"`
+		}
+		json.Unmarshal(r.Result, &res)
+		var out []string
+		for _, tl := range res.Tools {
+			out = append(out, tl.Name)
+		}
+		return out
+	}
+
+	pub := names(e.publish)
+	if len(pub) != 1 || pub[0] != "todo_add" {
+		t.Fatalf("publish sees: %v", pub)
+	}
+	rev := names(e.review)
+	if len(rev) != 6 {
+		t.Fatalf("review sees: %v", rev)
+	}
+}
+
+func TestPublishCannotRead(t *testing.T) {
+	e := newEnv(t)
+	_, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_list","arguments":{}}}`)
+	if r.Error == nil || r.Error.Code != codeInvalidParams {
+		t.Fatalf("publish read: %+v", r.Error)
+	}
+}
+
+func TestAddListCloseRoundTrip(t *testing.T) {
+	e := newEnv(t)
+
+	// Publish files an item (legacy shape).
+	_, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"move setup onto hopbox","scope":"Personal","source":"repo:hopbox"}}}`)
+	sc := structured(t, r)
+	id := sc["id"].(float64)
+	if sc["duplicate"].(bool) {
+		t.Fatal("fresh add marked duplicate")
+	}
+
+	// Retry dedupes.
+	_, r = e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"move setup onto hopbox","scope":"personal"}}}`)
+	sc = structured(t, r)
+	if !sc["duplicate"].(bool) || sc["id"].(float64) != id {
+		t.Fatalf("dedupe: %v", sc)
+	}
+
+	// Review lists it, with via recorded from the token, not the claim.
+	_, r = e.call(t, e.review, nil,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"todo_list","arguments":{}}}`)
+	sc = structured(t, r)
+	todos := sc["todos"].([]any)
+	if len(todos) != 1 {
+		t.Fatalf("list: %v", todos)
+	}
+	item := todos[0].(map[string]any)
+	if item["via"] != "box-1" || item["scope"] != "personal" || item["source"] != "repo:hopbox" {
+		t.Fatalf("item: %v", item)
+	}
+
+	// Review closes it as dropped with a reason.
+	_, r = e.call(t, e.review, nil, fmt.Sprintf(
+		`{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"todo_close","arguments":{"id":%d,"outcome":"dropped","reason":"superseded"}}}`, int(id)))
+	sc = structured(t, r)
+	todo := sc["todo"].(map[string]any)
+	if todo["state"] != "dropped" || todo["closed_at"] == nil {
+		t.Fatalf("close: %v", todo)
+	}
+
+	// Scopes reflect only open items.
+	_, r = e.call(t, e.review, nil,
+		`{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"todo_scopes","arguments":{}}}`)
+	sc = structured(t, r)
+	if len(sc["scopes"].([]any)) != 0 {
+		t.Fatalf("scopes after close: %v", sc)
+	}
+}
+
+func TestToolErrorsAreToolErrors(t *testing.T) {
+	e := newEnv(t)
+	_, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"   "}}}`)
+	if msg := toolErrText(t, r); msg == "" {
+		t.Fatal("empty tool error")
+	}
+	_, r = e.call(t, e.review, nil,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"todo_get","arguments":{"id":12345}}}`)
+	if msg := toolErrText(t, r); msg != "no todo with that id" {
+		t.Fatalf("not-found: %q", msg)
+	}
+}
+
+func TestModernDiscoverAndCall(t *testing.T) {
+	e := newEnv(t)
+
+	// server/discover with modern headers.
+	headers := map[string]string{
+		"MCP-Protocol-Version": ModernVersion,
+		"Mcp-Method":           "server/discover",
+	}
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":"d1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":%q}}}`, ModernVersion)
+	status, r := e.call(t, e.review, headers, body)
+	if status != http.StatusOK || r.Error != nil {
+		t.Fatalf("discover: %d %+v", status, r.Error)
+	}
+	var disc struct {
+		ResultType        string   `json:"resultType"`
+		SupportedVersions []string `json:"supportedVersions"`
+		Meta              map[string]struct {
+			Name string `json:"name"`
+		} `json:"_meta"`
+	}
+	json.Unmarshal(r.Result, &disc)
+	if disc.ResultType != "complete" || disc.SupportedVersions[0] != ModernVersion {
+		t.Fatalf("discover result: %+v", disc)
+	}
+	if disc.Meta["io.modelcontextprotocol/serverInfo"].Name != "docket" {
+		t.Fatalf("serverInfo: %+v", disc.Meta)
+	}
+
+	// A modern tools/call with correct mirrored headers works end to end.
+	h, b := modernCall("todo_add", `{"title":"modern era item","source":"test"}`)
+	status, r = e.call(t, e.publish, h, b)
+	if status != http.StatusOK {
+		t.Fatalf("modern add: %d", status)
+	}
+	sc := structured(t, r)
+	if sc["id"].(float64) < 1 {
+		t.Fatalf("modern add result: %v", sc)
+	}
+}
+
+func TestModernHeaderValidation(t *testing.T) {
+	e := newEnv(t)
+
+	// Mcp-Name mismatching the body is a 400 HeaderMismatch.
+	h, b := modernCall("todo_add", `{"title":"x"}`)
+	h["Mcp-Name"] = "something_else"
+	status, r := e.call(t, e.publish, h, b)
+	if status != http.StatusBadRequest || r.Error == nil || r.Error.Code != codeHeaderMismatch {
+		t.Fatalf("name mismatch: %d %+v", status, r.Error)
+	}
+
+	// Missing Mcp-Method is likewise rejected.
+	h, b = modernCall("todo_add", `{"title":"x"}`)
+	delete(h, "Mcp-Method")
+	status, r = e.call(t, e.publish, h, b)
+	if status != http.StatusBadRequest || r.Error == nil || r.Error.Code != codeHeaderMismatch {
+		t.Fatalf("missing method: %d %+v", status, r.Error)
+	}
+
+	// Header version without the matching _meta version is rejected.
+	headers := map[string]string{
+		"MCP-Protocol-Version": ModernVersion,
+		"Mcp-Method":           "ping",
+	}
+	status, r = e.call(t, e.publish, headers, `{"jsonrpc":"2.0","id":1,"method":"ping","params":{}}`)
+	if status != http.StatusBadRequest || r.Error == nil || r.Error.Code != codeHeaderMismatch {
+		t.Fatalf("meta mismatch: %d %+v", status, r.Error)
+	}
+
+	// A Base64-sentinel-encoded Mcp-Name that decodes to the body value passes.
+	h, b = modernCall("todo_add", `{"title":"sentinel"}`)
+	h["Mcp-Name"] = "=?base64?dG9kb19hZGQ=?=" // "todo_add"
+	status, r = e.call(t, e.publish, h, b)
+	if status != http.StatusOK {
+		t.Fatalf("sentinel: %d %+v", status, r.Error)
+	}
+	structured(t, r)
+}
+
+func TestUnsupportedVersion(t *testing.T) {
+	e := newEnv(t)
+	headers := map[string]string{"MCP-Protocol-Version": "1900-01-01"}
+	status, r := e.call(t, e.review, headers, `{"jsonrpc":"2.0","id":1,"method":"ping"}`)
+	if status != http.StatusBadRequest || r.Error == nil || r.Error.Code != codeUnsupportedVersion {
+		t.Fatalf("unsupported: %d %+v", status, r.Error)
+	}
+	var data struct {
+		Supported []string `json:"supported"`
+		Requested string   `json:"requested"`
+	}
+	json.Unmarshal(r.Error.Data, &data)
+	if len(data.Supported) != len(SupportedVersions) || data.Requested != "1900-01-01" {
+		t.Fatalf("error data: %+v", data)
+	}
+}
+
+func TestUnknownMethodStatusByEra(t *testing.T) {
+	e := newEnv(t)
+
+	// Legacy era: JSON-RPC error rides a 200.
+	status, r := e.call(t, e.review, nil, `{"jsonrpc":"2.0","id":1,"method":"no/such"}`)
+	if status != http.StatusOK || r.Error == nil || r.Error.Code != codeMethodNotFound {
+		t.Fatalf("legacy unknown: %d %+v", status, r.Error)
+	}
+
+	// Modern era: 404 so probes can distinguish "modern server" from "no MCP".
+	headers := map[string]string{
+		"MCP-Protocol-Version": ModernVersion,
+		"Mcp-Method":           "no/such",
+	}
+	body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"no/such","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":%q}}}`, ModernVersion)
+	status, r = e.call(t, e.review, headers, body)
+	if status != http.StatusNotFound || r.Error == nil || r.Error.Code != codeMethodNotFound {
+		t.Fatalf("modern unknown: %d %+v", status, r.Error)
+	}
+}
+
+func TestAddRateLimit(t *testing.T) {
+	e := newEnv(t)
+	for i := 0; i < AddRateLimit; i++ {
+		_, r := e.call(t, e.publish, nil, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"item %d"}}}`, i))
+		structured(t, r)
+	}
+	_, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"one too many"}}}`)
+	if msg := toolErrText(t, r); msg == "" {
+		t.Fatal("rate limit not enforced")
+	}
+
+	// The review token has its own budget.
+	_, r = e.call(t, e.review, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"review add"}}}`)
+	structured(t, r)
+}
