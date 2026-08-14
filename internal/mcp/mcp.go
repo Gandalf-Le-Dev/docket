@@ -194,10 +194,10 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "ping":
-		writeResult(w, req.ID, map[string]any{})
+		writeResult(w, req.ID, map[string]any{"resultType": "complete"})
 
 	case "tools/list":
-		writeResult(w, req.ID, map[string]any{"tools": toolDefs(role)})
+		writeResult(w, req.ID, map[string]any{"resultType": "complete", "tools": toolDefs(role)})
 
 	case "tools/call":
 		h.handleToolCall(w, &req, tokenName, role)
@@ -381,18 +381,27 @@ type callParams struct {
 	Arguments map[string]any `json:"arguments"`
 }
 
+// Every result carries resultType. The 2026-07-28 revision requires it on
+// each response ("complete", vs "input_required" for multi-round-trip tools),
+// and modern clients reject results without it — absent-means-complete
+// leniency applies only to servers speaking earlier revisions, which docket's
+// modern surface is not. Legacy clients ignore the extra field, so it is
+// unconditional rather than era-gated.
+
 // toolError is the MCP convention for a failure the model should see and
 // adapt to, as opposed to a protocol error.
 func toolError(w http.ResponseWriter, id json.RawMessage, msg string) {
 	writeResult(w, id, map[string]any{
-		"content": []map[string]any{{"type": "text", "text": msg}},
-		"isError": true,
+		"resultType": "complete",
+		"content":    []map[string]any{{"type": "text", "text": msg}},
+		"isError":    true,
 	})
 }
 
 func toolResult(w http.ResponseWriter, id json.RawMessage, v any) {
 	text, _ := json.Marshal(v)
 	writeResult(w, id, map[string]any{
+		"resultType":        "complete",
 		"content":           []map[string]any{{"type": "text", "text": string(text)}},
 		"structuredContent": v,
 	})

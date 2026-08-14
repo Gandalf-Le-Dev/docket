@@ -212,6 +212,48 @@ func TestRoleFiltersToolList(t *testing.T) {
 	}
 }
 
+// The 2026-07-28 revision requires resultType on every result, and clients of
+// that revision reject results without it — absent-means-complete leniency
+// applies only to servers speaking earlier revisions. Regression: tools/list
+// lacked it, and a modern Claude Code refused the entire tool surface.
+func TestResultsCarryResultType(t *testing.T) {
+	e := newEnv(t)
+
+	resultType := func(r rpcResp) string {
+		var res struct {
+			ResultType string `json:"resultType"`
+		}
+		json.Unmarshal(r.Result, &res)
+		return res.ResultType
+	}
+
+	// tools/list, both eras served by the same handler.
+	_, r := e.call(t, e.review, nil, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if got := resultType(r); got != "complete" {
+		t.Errorf("tools/list resultType = %q, want complete", got)
+	}
+
+	// ping.
+	_, r = e.call(t, e.review, nil, `{"jsonrpc":"2.0","id":2,"method":"ping"}`)
+	if got := resultType(r); got != "complete" {
+		t.Errorf("ping resultType = %q, want complete", got)
+	}
+
+	// A successful modern tools/call.
+	h, b := modernCall("todo_add", `{"title":"resultType check","source":"test"}`)
+	_, r = e.call(t, e.publish, h, b)
+	if got := resultType(r); got != "complete" {
+		t.Errorf("tools/call resultType = %q, want complete", got)
+	}
+
+	// A tool execution error is still a result, and still carries it.
+	h, b = modernCall("todo_add", `{"title":""}`)
+	_, r = e.call(t, e.publish, h, b)
+	if got := resultType(r); got != "complete" {
+		t.Errorf("tool-error resultType = %q, want complete", got)
+	}
+}
+
 func TestPublishCannotRead(t *testing.T) {
 	e := newEnv(t)
 	_, r := e.call(t, e.publish, nil,

@@ -257,49 +257,69 @@ plain page has actually failed at something.
 ## 8. Deployment with Pilot
 
 Docket is a fleet service like any other: a directory in the owner's fleet repo,
-deployed to `ks`, fronted by Caddy, health-checked by `pilotd`.
+deployed to `vps`, fronted by Caddy, health-checked by `pilotd`.
 
 ```yaml
 # services/docket/service.yaml
+name: docket
 runtime: compose
-hosts: [ks]
+hosts: [vps]
+
+# The compose file is the artifact; `output: ["./"]` ships the directory's
+# contents into the release.
+build:
+  output: ["./"]
 
 compose:
   file: compose.yaml
-  project: docket
+
+expose:
+  domains: [todo.mroc.me]
+  upstream: 8340
+  verify: true
+  # Public on purpose. The first cut of this design closed the route to the
+  # tailnet, but the point of the service is that *any* machine can file —
+  # hopbox boxes and CI live outside the tailnet — and every request is
+  # token-gated anyway: the web page and the tool surface show nothing
+  # without one.
 
 health:
   # /healthz answers 200 only if the DB responds to a ping — a wedged SQLite
   # file fails the deploy and rolls back rather than going live dead.
   http:
     url: http://127.0.0.1:8340/healthz
+  timeout: 60s
 
-expose:
-  domains: [docket.<domain>]
-  upstream: 8340
-  # Tailnet-only. Publish tokens gate writes, but there is no reason for this
-  # route to answer the public internet at all.
-  allow:
-    - 100.64.0.0/10
-    - "fd7a:115c:a1e0::/48"
+rollout:
+  strategy: recreate
 
 alerts:
   # If the backlog is down, agents are silently dropping work again — which is
   # the exact failure this service exists to end. Worth a ping.
   - when: service.down
-    for: 5m
-    notify: [phone]
+    for: 2m
+    notify: [discord]
+
+  # Somebody edited the host by hand; the next deploy will overwrite it.
+  - when: drift.detected
+    cooldown: 12h
+    notify: [discord]
 ```
 
 ```yaml
 # services/docket/compose.yaml
+# Pinned project name: the named volume belongs to the compose project, and
+# the default project name would come from the release directory, which
+# changes every deploy. Pinning it is what makes docket-data survive.
+name: docket
+
 services:
   docket:
-    image: ghcr.io/gandalf-le-dev/docket:0.1.0   # pinned; pilot doctor insists
+    image: ghcr.io/gandalf-le-dev/docket:v0.1.0   # pinned; pilot doctor insists
+    container_name: docket   # stable name — `docker exec docket …` mints tokens
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8340:8340"    # loopback only; Caddy's allow-list is not a
-                                 # substitute for not answering 0.0.0.0
+      - "127.0.0.1:8340:8340"    # loopback only — Caddy is the only route in
     volumes:
       - docket-data:/var/lib/docket
 
@@ -317,13 +337,12 @@ Two Pilot-specific decisions worth calling out:
   Nothing here holds a long-lived connection — the MCP surface is stateless on purpose,
   partly so that deploys can stay boring.
 
-**The hostname is decided now: `docket.<domain>`, one stable name, forever.** The
+**The hostname is decided now: `todo.mroc.me`, one stable name, forever.** The
 issue calls this out and it matters more than it looks: hopbox's planned per-box egress
 allowlist is default-deny, and if this host is not baked into the default policy, every
 agent silently loses the ability to file — the tool's failure mode is exactly the
-problem it was built to solve. `docket.<domain>` goes into hopbox's default allowlist
-in the same change that deploys the service. (`<domain>` is the owner's zone; the name
-is what is being fixed here, the zone is whatever `hopbox-docs` already uses.)
+problem it was built to solve. `todo.mroc.me` goes into hopbox's default allowlist
+in the same change that deploys the service.
 
 ---
 
@@ -336,7 +355,7 @@ Each agent box gets the standard HTTP MCP client config:
   "mcpServers": {
     "docket": {
       "type": "http",
-      "url": "https://docket.<domain>/mcp",
+      "url": "https://todo.mroc.me/mcp",
       "headers": { "Authorization": "Bearer ${DOCKET_TOKEN}" }
     }
   }
