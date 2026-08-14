@@ -17,4 +17,4 @@ project-management tool. No sprints, no assignees, no boards, ever.
 
 See [DESIGN.md](DESIGN.md) for the full design: the name, the verbs, the schema, auth,
 and how it deploys. Designed against
-[issue #1](https://github.com/Gandalf-Le-Dev/backlog-mcp/issues/1).
+[issue #1](https://github.com/Gandalf-Le-Dev/docket/issues/1).

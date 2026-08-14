@@ -1,7 +1,7 @@
 # Docket — Design
 
 A self-hosted backlog MCP any agent can write to. Designed against
-[issue #1](https://github.com/Gandalf-Le-Dev/backlog-mcp/issues/1), deployed with
+[issue #1](https://github.com/Gandalf-Le-Dev/docket/issues/1), deployed with
 [Pilot](https://github.com/Gandalf-Le-Dev/pilot).
 
 The problem it solves: agents routinely surface work that is real but out of scope for
@@ -37,8 +37,9 @@ seeing `docket_file` needs a paragraph. Clients namespace tools by server anyway
 (`mcp__docket__todo_add`), so nothing collides. The name is for humans; the verbs are
 for models.
 
-The repo can stay `backlog-mcp` or be renamed `docket` — the binary and service name
-are `docket` either way.
+The repo is renamed `docket` to match — GitHub redirects the old `backlog-mcp` URLs,
+remotes, and issue links automatically, so nothing breaks. Binary, service, and repo
+all carry the one name.
 
 ---
 
@@ -85,10 +86,24 @@ One binary, three surfaces on one port:
 | `/healthz` | Liveness + DB ping, for `pilotd` | None                          |
 
 **Transport.** Streamable HTTP because agents connect over the network from many boxes
-and platforms — stdio only works for a co-located client. The server is stateless: no
-sessions, no server-push, every call independent. The MCP spec's OAuth authorization
-story is more machinery than a single-operator fleet needs; a static bearer header,
-which every major client supports for HTTP servers, is the whole scheme.
+and platforms — stdio only works for a co-located client. Docket targets the current
+spec revision, **2026-07-28**, which suits it unusually well: that revision removed
+protocol-level sessions (`Mcp-Session-Id`), the `initialize` handshake, and the GET
+notification stream, so statelessness stopped being a server option and became the
+protocol's shape. The server is one POST endpoint; every call is self-contained
+(protocol version in the `MCP-Protocol-Version` header and `_meta`), the server
+validates the mirrored `Mcp-Method` / `Mcp-Name` headers, implements the mandatory
+`server/discover`, and answers every request with a plain JSON object — Docket never
+streams and never pushes, so nothing the revision removed is missed. Handshake-era
+clients (2025-03-26 through 2025-11-25) still exist on the platforms this must reach;
+serving them costs nothing because Docket keeps zero per-client state either way — the
+official MCP Go SDK owns the version negotiation, and older clients that expect a
+session simply never get a session id, which those revisions permit.
+
+The spec's authorization framework (OAuth 2.1) is more machinery than a
+single-operator fleet needs; a static bearer header — the spec requires only that
+servers implement *proper authentication*, and every major client supports custom
+headers for HTTP servers — is the whole scheme.
 
 **Implementation.** Go, stdlib `net/http`, the official MCP Go SDK,
 `modernc.org/sqlite` (pure Go, no CGO, trivial cross-compile), web UI embedded via
