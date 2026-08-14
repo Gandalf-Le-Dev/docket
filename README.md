@@ -21,7 +21,7 @@ Docket is the destination. One small server you host yourself:
 
 It is one Go binary and one SQLite file. Small on purpose: no sprints, no assignees,
 no boards, ever — the value is that it exists everywhere, not that it is a good
-project-management tool. The full design rationale is in [DESIGN.md](DESIGN.md).
+project-management tool.
 
 ## Try it in two minutes
 
@@ -190,9 +190,7 @@ Two rules, then any host works:
 `GET /healthz` returns 200 only when the database answers — point your health checks
 at it.
 
-This repo's own deployment uses [Pilot](https://github.com/Gandalf-Le-Dev/pilot);
-the exact `service.yaml`/`compose.yaml` for that setup is in
-[DESIGN.md §8](DESIGN.md#8-deployment-with-pilot).
+This repo's own deployment uses [Pilot](https://github.com/Gandalf-Le-Dev/pilot).
 
 ## Day-to-day operation
 
