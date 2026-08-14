@@ -12,12 +12,12 @@ Docket is the destination. One small server you host yourself:
 
 - **Agents file items** with a `todo_add` tool, from any machine, any repo, any
   platform — each carrying a `source` that records who noticed it.
-- **You review them** from a phone-friendly built-in web page, or from any agent via
-  the full tool set: list, edit, close as *done*, or close as *dropped* ("deliberately
-  not doing this" is a verdict worth keeping).
-- **Writes are cheap, reads are privileged.** Each agent machine gets an *add-only*
-  token: it can file, but it cannot read, list, or even discover the rest of the
-  backlog. Only your *review* token sees everything.
+- **You and your agents work them** from a phone-friendly built-in web page or via
+  the full tool set: list, pick one up, edit, close as *done*, or close as *dropped*
+  ("deliberately not doing this" is a verdict worth keeping).
+- **You choose who reads.** Every machine gets its own named token — full-access
+  *review* tokens for you and for agents that pick up work, and optional add-only
+  *publish* tokens for machines that should only ever file.
 
 It is one Go binary and one SQLite file. Small on purpose: no sprints, no assignees,
 no boards, ever — the value is that it exists everywhere, not that it is a good
