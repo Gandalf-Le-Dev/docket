@@ -126,6 +126,21 @@ equivalent): *"Work that is real but out of scope for the current repo goes to
 Docket's `todo_add`, with `source` set to where you noticed it."* The tool's own
 description says the same, so even an uninstructed agent files things sensibly.
 
+**Filing by hand from Claude Code.** This repo ships a `/todo` slash command
+([`contrib/claude-code/skills/todo`](contrib/claude-code/skills/todo/SKILL.md)) — one
+file, installed straight from GitHub:
+
+```sh
+mkdir -p ~/.claude/skills/todo && curl -fsSL -o ~/.claude/skills/todo/SKILL.md \
+  https://raw.githubusercontent.com/Gandalf-Le-Dev/docket/main/contrib/claude-code/skills/todo/SKILL.md
+```
+
+Then `/todo fix the flaky store test` files an item scoped to the repo you are in,
+`/todo hopbox: egress allowlist still skipped` files into another scope, and a bare
+`/todo` lists the current repo's open items (that last one needs a review token).
+The reply is one line — `Filed #16 in docket: …` — with `(already open)` when Docket
+deduplicated it and `(new scope)` when you typed a scope that did not exist yet.
+
 To manage the backlog *from* an agent (triage from your desktop, say), add the same
 config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
 `todo_update`, `todo_close`, and `todo_scopes`.
