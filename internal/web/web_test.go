@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Gandalf-Le-Dev/docket/internal/store"
 )
@@ -221,6 +222,101 @@ func TestLinkify(t *testing.T) {
 	for in, want := range cases {
 		if got := string(linkify(in)); got != want {
 			t.Errorf("linkify(%q)\n got %s\nwant %s", in, got, want)
+		}
+	}
+}
+
+func TestActionsReportBack(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+
+	resp, err := c.PostForm(srv.URL+"/add", url.Values{"title": {"first"}, "scope": {"docket"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	if !strings.Contains(body, "Filed #1.") || !strings.Contains(body, `<a href="/todo/1">Open it</a>`) {
+		t.Fatalf("add flash missing:\n%s", body)
+	}
+	// Scope inputs complete from the scopes in use.
+	if !strings.Contains(body, `<datalist id="scopes"><option value="docket"></datalist>`) {
+		t.Fatalf("scope datalist missing:\n%s", body)
+	}
+
+	resp, err = c.PostForm(srv.URL+"/add", url.Values{"title": {"first"}, "scope": {"docket"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body = readAll(t, resp); !strings.Contains(body, "Already open as #1.") {
+		t.Fatalf("duplicate flash missing:\n%s", body)
+	}
+
+	resp, err = c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "outcome": {"dropped"}, "reason": {"not now"}, "back_state": {"open"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if !strings.Contains(body, "Dropped #1.") || !strings.Contains(body, `action="/todo/reopen"`) {
+		t.Fatalf("drop flash missing its reverse:\n%s", body)
+	}
+
+	// The reverse lands where the action came from, and says so.
+	resp, err = c.PostForm(srv.URL+"/todo/reopen", url.Values{"id": {"1"}, "back_state": {"dropped"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if resp.Request.URL.Query().Get("state") != "dropped" || !strings.Contains(body, "Reopened #1.") {
+		t.Fatalf("reopen landed on %s:\n%s", resp.Request.URL, body)
+	}
+	if got, _ := s.GetTodo(1); got.State != "open" {
+		t.Fatalf("reopen: %+v", got)
+	}
+
+	// A closed item shows its latest verdict on its own line; the earlier
+	// drop note stays in the body as history.
+	c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "outcome": {"done"}, "reason": {"shipped"}})
+	resp, err = c.Get(srv.URL + "/todo/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if !strings.Contains(body, `<p class="verdict"><b>Done:</b> shipped</p>`) ||
+		!strings.Contains(body, `<div class="body">— closed (dropped): not now</div>`) {
+		t.Fatalf("verdict rendering:\n%s", body)
+	}
+}
+
+func TestSplitVerdict(t *testing.T) {
+	cases := []struct{ body, text, verdict string }{
+		{"", "", ""},
+		{"plain body", "plain body", ""},
+		{"— closed (done): shipped", "", "shipped"},
+		{"context\n\n— closed (dropped): not now", "context", "not now"},
+		{"mentions — closed (x): inline, not a note", "mentions — closed (x): inline, not a note", ""},
+	}
+	for _, c := range cases {
+		text, verdict := splitVerdict(c.body)
+		if text != c.text || verdict != c.verdict {
+			t.Errorf("splitVerdict(%q) = %q, %q; want %q, %q", c.body, text, verdict, c.text, c.verdict)
+		}
+	}
+}
+
+func TestAgo(t *testing.T) {
+	stamp := func(d time.Duration) string { return time.Now().Add(-d).UTC().Format(time.RFC3339) }
+	cases := map[string]string{
+		stamp(10 * time.Second):   "just now",
+		stamp(5 * time.Minute):    "5m ago",
+		stamp(3 * time.Hour):      "3h ago",
+		stamp(4 * 24 * time.Hour): "4d ago",
+		"2020-02-03T04:05:06Z":    "Feb 3, 2020",
+		"garbage":                 "garbage",
+	}
+	for in, want := range cases {
+		if got := ago(in); got != want {
+			t.Errorf("ago(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

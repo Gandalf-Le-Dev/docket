@@ -10,72 +10,90 @@
 <main>
   <header class="top">
     <h1>Docket</h1>
-    <form method="post" action="/logout"><button type="submit">Sign out</button></form>
+    <form method="post" action="/logout"><button type="submit" class="link">Sign out</button></form>
   </header>
 
+  {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
+  {{$state := .State}}{{$scope := .Scope}}{{$q := .Query}}
   <nav class="tabs">
-    <a href="/" {{if eq .State "open"}}class="on"{{end}}>Open ({{index .Counts "open"}})</a>
-    <a href="/?state=done" {{if eq .State "done"}}class="on"{{end}}>Done ({{index .Counts "done"}})</a>
-    <a href="/?state=dropped" {{if eq .State "dropped"}}class="on"{{end}}>Dropped ({{index .Counts "dropped"}})</a>
-    <a href="/?state=all" {{if eq .State "all"}}class="on"{{end}}>All</a>
-    {{if .Scope}}<a class="on" href="/?state={{.State}}">scope: {{.Scope}} ✕</a>{{end}}
+    <a href="/{{if $scope}}?scope={{$scope}}{{end}}" {{if eq .State "open"}}class="on"{{end}}>Open {{index .Counts "open"}}</a>
+    <a href="/?state=done{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "done"}}class="on"{{end}}>Done {{index .Counts "done"}}</a>
+    <a href="/?state=dropped{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "dropped"}}class="on"{{end}}>Dropped {{index .Counts "dropped"}}</a>
+    <a href="/?state=all{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "all"}}class="on"{{end}}>All</a>
+    {{if $q}}<a class="on" href="/?state={{$state}}{{if $scope}}&scope={{$scope}}{{end}}">“{{$q}}” ✕</a>{{end}}
   </nav>
 
-  <form method="get" action="/" class="searchbar">
+  <form method="get" action="/" class="searchbar" role="search">
     <input type="hidden" name="state" value="{{.State}}">
-    {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
-    <input type="text" name="q" value="{{.Query}}" placeholder="search title and body">
+    {{if $scope}}<input type="hidden" name="scope" value="{{$scope}}">{{end}}
+    <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
     <button type="submit">Search</button>
   </form>
 
-  <details class="panel">
-    <summary>＋ Add an item</summary>
+  {{if .Scopes}}
+  <nav class="scopes" aria-label="Scopes">
+    {{range .Scopes}}{{if .Scope}}
+      {{if eq .Scope $scope}}
+        <a class="on" href="/?state={{$state}}{{if $q}}&q={{$q}}{{end}}">{{.Scope}} ✕</a>
+      {{else}}
+        <a href="/?state={{$state}}&scope={{.Scope}}{{if $q}}&q={{$q}}{{end}}">{{.Scope}}{{if eq $state "open"}}<b>{{.Open}}</b>{{end}}</a>
+      {{end}}
+    {{end}}{{end}}
+  </nav>
+  {{end}}
+
+  <details class="tool">
+    <summary>Add an item</summary>
     <div class="panel-body">
       <form method="post" action="/add">
         <input type="hidden" name="back_state" value="{{.State}}">
         <input type="hidden" name="back_scope" value="{{.Scope}}">
         <label for="add-title">Title</label>
-        <input type="text" id="add-title" name="title" required>
+        <input type="text" id="add-title" name="title" required placeholder="What needs doing">
         <label for="add-body">Body</label>
-        <textarea id="add-body" name="body"></textarea>
+        <textarea id="add-body" name="body" placeholder="Context, links, why it matters"></textarea>
         <label for="add-scope">Scope</label>
-        <input type="text" id="add-scope" name="scope" placeholder="e.g. hopbox, personal, idea">
+        <input type="text" id="add-scope" name="scope" list="scopes" value="{{.Scope}}" placeholder="A project name, or personal">
         <p><button type="submit" class="primary">File it</button></p>
       </form>
     </div>
   </details>
 
   {{if not .Groups}}
-    <p class="empty">Nothing here.</p>
+    <p class="empty">
+      {{if $q}}Nothing matches “{{$q}}”.
+      {{else if $scope}}Nothing {{if ne $state "all"}}{{$state}} {{end}}in {{$scope}}.
+      {{else if eq $state "open"}}Nothing open. Agents file items here with <code>todo_add</code>, or add one above.
+      {{else}}Nothing {{if ne $state "all"}}{{$state}} {{end}}yet.{{end}}
+    </p>
   {{end}}
 
-  {{$state := .State}}
   {{range .Groups}}
-    <h2 class="scope">{{if .Scope}}<a href="/?state={{$state}}&scope={{.Scope}}">{{.Scope}}</a>{{else}}unscoped{{end}}</h2>
-    {{range .Todos}}
-      {{template "item" .}}
-    {{end}}
+    <section class="scope">
+      <h2>{{if .Scope}}<a href="/?state={{$state}}&scope={{.Scope}}">{{.Scope}}</a>{{else}}unscoped{{end}} <span class="count">{{len .Todos}}</span></h2>
+      {{range .Todos}}{{template "item" .}}{{end}}
+    </section>
   {{end}}
 
   {{if .Scopes}}
   <div class="footer-tools">
-    <details class="panel">
+    <details class="tool">
       <summary>Rename a scope</summary>
       <div class="panel-body">
         <form method="post" action="/scope/rename">
           <input type="hidden" name="back_state" value="{{.State}}">
           <div class="row">
             <div>
-              <label>From</label>
-              <select name="from">
+              <label for="rename-from">From</label>
+              <select id="rename-from" name="from">
                 {{range .Scopes}}<option value="{{.Scope}}">{{if .Scope}}{{.Scope}}{{else}}(unscoped){{end}} — {{.Open}} open</option>{{end}}
               </select>
             </div>
             <div>
-              <label>To</label>
-              <input type="text" name="to">
+              <label for="rename-to">To</label>
+              <input type="text" id="rename-to" name="to" list="scopes">
             </div>
           </div>
           <p><button type="submit">Rename</button></p>
@@ -84,6 +102,8 @@
     </details>
   </div>
   {{end}}
+
+  {{template "scopes" .Scopes}}
 </main>
 </body>
 </html>

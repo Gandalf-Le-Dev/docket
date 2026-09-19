@@ -2,15 +2,13 @@
       <details class="todo"{{if .Focus}} open{{end}}>
         <summary>
           <a class="id" href="/todo/{{.ID}}">#{{.ID}}</a>
-          <span>{{.Title}}</span>
-          {{if eq .State "done"}}<span class="state-done">done</span>{{end}}
-          {{if eq .State "dropped"}}<span class="state-dropped">dropped</span>{{end}}
+          <span class="title">{{.Title}}{{if eq .State "done"}}<span class="state-done">done</span>{{end}}{{if eq .State "dropped"}}<span class="state-dropped">dropped</span>{{end}}</span>
+          <span class="age" title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</span>
+          <span class="where">{{if .Source}}{{.Source}} · {{end}}via {{.Via}}</span>
         </summary>
         <div class="todo-detail">
-          {{if .Body}}<div class="body">{{linkify .Body}}</div>{{end}}
-          <div class="meta">
-            filed {{shortTime .CreatedAt}} via {{.Via}}{{if .Source}} · source: {{.Source}}{{end}}{{if .ClosedAt}} · closed {{shortTime .ClosedAt}}{{end}}
-          </div>
+          {{if .Text}}<div class="body">{{linkify .Text}}</div>{{end}}
+          {{if .Verdict}}<p class="verdict"><b>{{if eq .State "done"}}Done{{else}}Dropped{{end}}:</b> {{.Verdict}}</p>{{end}}
           <div class="actions">
             {{if eq .State "open"}}
               <form method="post" action="/todo/close">
@@ -19,13 +17,20 @@
                 {{template "back" .}}
                 <button type="submit" class="primary">Done</button>
               </form>
-              <form method="post" action="/todo/close">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="outcome" value="dropped">
-                {{template "back" .}}
-                <input type="text" name="reason" class="inline-input" placeholder="reason (optional)">
-                <button type="submit" class="danger">Drop</button>
-              </form>
+              <details>
+                <summary>Drop…</summary>
+                <div class="unfold">
+                  <form method="post" action="/todo/close">
+                    <input type="hidden" name="id" value="{{.ID}}">
+                    <input type="hidden" name="outcome" value="dropped">
+                    {{template "back" .}}
+                    <div class="row">
+                      <input type="text" name="reason" placeholder="why not (optional)">
+                      <button type="submit" class="danger">Drop it</button>
+                    </div>
+                  </form>
+                </div>
+              </details>
             {{else}}
               <form method="post" action="/todo/reopen">
                 <input type="hidden" name="id" value="{{.ID}}">
@@ -33,23 +38,26 @@
                 <button type="submit">Reopen</button>
               </form>
             {{end}}
+            <details>
+              <summary>Edit…</summary>
+              <div class="unfold">
+                <form method="post" action="/todo/update">
+                  <input type="hidden" name="id" value="{{.ID}}">
+                  {{template "back" .}}
+                  <label for="title-{{.ID}}">Title</label>
+                  <input type="text" id="title-{{.ID}}" name="title" value="{{.Title}}">
+                  <label for="body-{{.ID}}">Body</label>
+                  <textarea id="body-{{.ID}}" name="body">{{.Body}}</textarea>
+                  <label for="scope-{{.ID}}">Scope</label>
+                  <input type="text" id="scope-{{.ID}}" name="scope" value="{{.Scope}}" list="scopes">
+                  <p><button type="submit" class="primary">Save</button></p>
+                </form>
+              </div>
+            </details>
           </div>
-          <details class="panel" style="margin-top:0.6rem">
-            <summary>Edit</summary>
-            <div class="panel-body">
-              <form method="post" action="/todo/update">
-                <input type="hidden" name="id" value="{{.ID}}">
-                {{template "back" .}}
-                <label>Title</label>
-                <input type="text" name="title" value="{{.Title}}">
-                <label>Body</label>
-                <textarea name="body">{{.Body}}</textarea>
-                <label>Scope</label>
-                <input type="text" name="scope" value="{{.Scope}}">
-                <p><button type="submit" class="primary">Save</button></p>
-              </form>
-            </div>
-          </details>
+          <div class="meta">
+            filed {{shortTime .CreatedAt}}{{if .ClosedAt}}, closed {{shortTime .ClosedAt}}{{end}}
+          </div>
         </div>
       </details>
 {{end}}
@@ -57,3 +65,19 @@
 {{/* back: where an action's redirect lands — the item's page, or the list view it came from */}}
 {{define "back"}}{{if .Focus}}<input type="hidden" name="back_id" value="{{.ID}}">{{else}}<input type="hidden" name="back_state" value="{{.BackState}}">
                 <input type="hidden" name="back_scope" value="{{.BackScope}}">{{end}}{{end}}
+
+{{/* scopes: the datalist every scope input completes from */}}
+{{define "scopes"}}<datalist id="scopes">{{range .}}{{if .Scope}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}
+
+{{/* flash: what the last action did, with its reverse beside it */}}
+{{define "flash"}}{{with .Flash}}
+  <div class="flash" role="status">
+    <span>{{.Text}}</span>
+    {{if .Undo}}<form method="post" action="{{.Undo}}">
+      <input type="hidden" name="id" value="{{.ID}}">
+      {{if .BackID}}<input type="hidden" name="back_id" value="{{.BackID}}">{{else}}<input type="hidden" name="back_state" value="{{.BackState}}"><input type="hidden" name="back_scope" value="{{.BackScope}}">{{end}}
+      <button type="submit" class="link">Reopen</button>
+    </form>{{end}}
+    {{if .Link}}<a href="{{.Link}}">Open it</a>{{end}}
+  </div>
+{{end}}{{end}}

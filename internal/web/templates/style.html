@@ -3,76 +3,136 @@
   :root {
     --bg: #f6f5f2; --card: #ffffff; --ink: #24292f; --muted: #6b7280;
     --line: #e4e2dc; --accent: #3b5f4a; --accent-ink: #ffffff; --danger: #8a4b3c;
+    --wash: #eef2ee;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #16181a; --card: #1f2226; --ink: #e6e4df; --muted: #9aa0a6;
       --line: #33373c; --accent: #79a88e; --accent-ink: #16181a; --danger: #cf8b78;
+      --wash: #22292a;
     }
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
-    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
   }
-  main { max-width: 42rem; margin: 0 auto; padding: 1rem 1rem 4rem; }
-  header.top { display: flex; align-items: baseline; gap: 0.75rem; margin: 0.5rem 0 1rem; }
-  header.top h1 { font-size: 1.4rem; margin: 0; }
+  main { max-width: 40rem; margin: 0 auto; padding: 0.75rem 1rem 4rem; }
+  a { color: var(--accent); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  header.top { display: flex; align-items: baseline; gap: 1rem; margin: 0.5rem 0 0.9rem; }
+  header.top h1 { font-size: 1.25rem; margin: 0; letter-spacing: -0.01em; }
   header.top h1 a { color: inherit; text-decoration: none; }
   header.top form { margin-left: auto; }
-  a { color: var(--accent); }
-  .tabs { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 1rem; }
-  .tabs a {
-    text-decoration: none; padding: 0.25rem 0.7rem; border-radius: 999px;
+  button.link {
+    border: 0; background: none; padding: 0; color: var(--accent);
+    text-decoration: underline; font: inherit; font-size: 0.85rem; cursor: pointer;
+  }
+
+  /* Chips: the state tabs, and active filters that clear when tapped. */
+  .tabs, .scopes { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .tabs { margin-bottom: 0.7rem; }
+  .tabs a, .scopes a {
+    text-decoration: none; padding: 0.3rem 0.75rem; border-radius: 999px;
     border: 1px solid var(--line); color: var(--ink); font-size: 0.9rem; background: var(--card);
   }
-  .tabs a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
-  .error {
-    background: var(--card); border: 1px solid var(--danger); color: var(--danger);
-    border-radius: 8px; padding: 0.5rem 0.8rem; margin-bottom: 1rem;
+  .tabs a.on, .scopes a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .scopes { margin: 0.7rem 0 0.9rem; }
+  .scopes a { font-size: 0.85rem; padding: 0.2rem 0.65rem; }
+  .scopes a b { font-weight: 500; opacity: 0.7; margin-left: 0.3em; }
+
+  .searchbar { display: flex; gap: 0.5rem; }
+  .searchbar input { flex: 1; }
+
+  .flash, .error {
+    border-radius: 8px; padding: 0.55rem 0.8rem; margin-bottom: 0.9rem; font-size: 0.95rem;
+    display: flex; gap: 0.6rem; align-items: baseline; flex-wrap: wrap;
   }
-  h2.scope {
-    font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--muted); margin: 1.4rem 0 0.5rem;
+  .flash { background: var(--wash); border: 1px solid var(--line); }
+  .error { background: var(--card); border: 1px solid var(--danger); color: var(--danger); }
+  .flash form { display: inline; }
+
+  .empty { color: var(--muted); margin: 2.5rem 0; text-align: center; line-height: 1.6; }
+
+  /* A scope is the card; its items are rows inside it. */
+  section.scope { background: var(--card); border: 1px solid var(--line); border-radius: 10px; margin-bottom: 1rem; overflow: hidden; }
+  section.scope > h2 {
+    font-size: 0.95rem; font-weight: 600; margin: 0; padding: 0.55rem 0.9rem;
+    border-bottom: 1px solid var(--line); display: flex; align-items: baseline; gap: 0.5rem;
   }
-  h2.scope a { color: inherit; }
-  details.todo, details.panel {
-    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
-    margin-bottom: 0.5rem; overflow: hidden;
+  section.scope > h2 a { color: inherit; text-decoration: none; }
+  section.scope > h2 a:hover { text-decoration: underline; }
+  section.scope > h2 .count { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+  .focus section.scope { margin-bottom: 0.6rem; }
+
+  details.todo + details.todo { border-top: 1px solid var(--line); }
+  details.todo summary {
+    cursor: pointer; padding: 0.6rem 0.9rem; list-style: none;
+    display: grid; grid-template-columns: auto 1fr auto; column-gap: 0.6rem; align-items: baseline;
   }
-  details.todo summary, details.panel summary {
-    cursor: pointer; padding: 0.6rem 0.8rem; list-style: none;
-    display: flex; gap: 0.5rem; align-items: baseline;
+  details.todo summary::-webkit-details-marker { display: none; }
+  details.todo[open] summary { background: var(--wash); }
+  summary .id {
+    color: var(--muted); font-size: 0.8rem; text-decoration: none;
+    font-variant-numeric: tabular-nums; padding-top: 0.1rem;
   }
-  details.todo summary::-webkit-details-marker,
-  details.panel summary::-webkit-details-marker { display: none; }
-  summary .id { color: var(--muted); font-size: 0.8rem; flex-shrink: 0; text-decoration: none; }
   summary .id:hover { text-decoration: underline; }
-  summary .state-done { color: var(--accent); font-size: 0.8rem; }
-  summary .state-dropped { color: var(--danger); font-size: 0.8rem; }
-  .todo-detail { padding: 0 0.8rem 0.8rem; border-top: 1px solid var(--line); }
-  .todo-detail .body { white-space: pre-wrap; margin: 0.6rem 0; word-break: break-word; }
-  .meta { color: var(--muted); font-size: 0.8rem; margin: 0.4rem 0 0.6rem; }
+  summary .title { font-weight: 500; }
+  summary .age { color: var(--muted); font-size: 0.8rem; white-space: nowrap; }
+  summary .where { grid-column: 2 / 4; color: var(--muted); font-size: 0.8rem; margin-top: 0.1rem; }
+  summary .state-done, summary .state-dropped { font-size: 0.8rem; font-weight: 400; margin-left: 0.4rem; }
+  summary .state-done { color: var(--accent); }
+  summary .state-dropped { color: var(--danger); }
+
+  .todo-detail { padding: 0.7rem 0.9rem 0.9rem; border-top: 1px solid var(--line); }
+  .todo-detail .body { white-space: pre-wrap; margin: 0 0 0.7rem; word-break: break-word; }
+  .verdict { margin: 0 0 0.7rem; padding-left: 0.7rem; border-left: 3px solid var(--line); color: var(--muted); }
+  .verdict b { color: var(--ink); font-weight: 500; }
+  .meta { color: var(--muted); font-size: 0.8rem; margin: 0.6rem 0 0; }
+
   .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
   .actions form { display: inline-flex; gap: 0.4rem; align-items: center; }
+  /* Drop and Edit unfold in place: an open one takes the row's full width. */
+  .actions details[open] { flex-basis: 100%; }
+  .actions details summary {
+    display: inline-block; list-style: none; cursor: pointer; font-size: 0.9rem; padding: 0.4rem 0.9rem;
+    border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  }
+  .actions details summary::-webkit-details-marker { display: none; }
+  .actions details[open] summary { background: var(--wash); }
+  .unfold { margin-top: 0.5rem; padding: 0.6rem 0.8rem 0.8rem; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); }
+  .unfold form { display: block; }
+  .unfold .row { display: flex; gap: 0.5rem; align-items: center; }
+  .unfold .row input { flex: 1; }
+  .unfold .row button { flex: 0 0 auto; }
+
   button {
-    font: inherit; font-size: 0.85rem; padding: 0.3rem 0.8rem; border-radius: 7px;
+    font: inherit; font-size: 0.9rem; padding: 0.4rem 0.9rem; border-radius: 7px;
     border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer;
   }
   button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
   button.danger { color: var(--danger); border-color: var(--danger); }
-  input[type="text"], input[type="password"], textarea, select {
-    font: inherit; width: 100%; padding: 0.45rem 0.6rem; border-radius: 7px;
-    border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+  input[type="text"], input[type="search"], input[type="password"], textarea, select {
+    font: inherit; width: 100%; padding: 0.5rem 0.65rem; border-radius: 7px;
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
   }
+  .unfold input[type="text"], .unfold textarea, .panel-body input[type="text"], .panel-body textarea { background: var(--card); }
   textarea { min-height: 5rem; resize: vertical; }
-  label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.5rem 0 0.15rem; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin: 0.6rem 0 0.2rem; }
   .row { display: flex; gap: 0.5rem; }
   .row > * { flex: 1; }
-  .inline-input { width: auto; flex: 1; }
-  .panel-body { padding: 0 0.8rem 0.8rem; border-top: 1px solid var(--line); }
-  .searchbar { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-  .empty { color: var(--muted); margin: 2rem 0; text-align: center; }
-  .footer-tools { margin-top: 2rem; }
+
+  /* Tools that are rarely needed read as text, not as another card. */
+  details.tool { margin: 0.4rem 0 1rem; }
+  details.tool summary { cursor: pointer; color: var(--accent); font-size: 0.9rem; list-style: none; padding: 0.3rem 0; }
+  details.tool summary::-webkit-details-marker { display: none; }
+  details.tool summary::before { content: "+ "; color: var(--muted); }
+  details.tool[open] summary::before { content: "– "; }
+  .panel-body { padding: 0.6rem 0.9rem 0.9rem; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin-top: 0.4rem; }
+  .panel-body p { margin: 0.8rem 0 0; }
+  .footer-tools { margin-top: 1.5rem; }
+
+  .permalink { color: var(--muted); font-size: 0.85rem; margin-top: 1rem; word-break: break-all; }
 </style>
 {{end}}

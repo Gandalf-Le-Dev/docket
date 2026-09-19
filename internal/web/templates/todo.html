@@ -7,22 +7,27 @@
   {{template "style" .}}
 </head>
 <body>
-<main>
+<main class="focus">
   <header class="top">
     <h1><a href="/">Docket</a></h1>
-    <form method="post" action="/logout"><button type="submit">Sign out</button></form>
+    <form method="post" action="/logout"><button type="submit" class="link">Sign out</button></form>
   </header>
 
+  {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
   <nav class="tabs">
     <a href="/{{if ne .Item.State "open"}}?state={{.Item.State}}{{end}}">← all items</a>
-    {{if .Item.Scope}}<a href="/?state={{.Item.State}}&scope={{.Item.Scope}}">scope: {{.Item.Scope}}</a>{{end}}
   </nav>
 
-  {{template "item" .Item}}
+  <section class="scope">
+    <h2>{{if .Item.Scope}}<a href="/?state={{.Item.State}}&scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{else}}unscoped{{end}}</h2>
+    {{template "item" .Item}}
+  </section>
 
-  <p class="meta">Link: <a href="{{.URL}}">{{.URL}}</a></p>
+  <p class="permalink">Link: <a href="{{.URL}}">{{.URL}}</a></p>
+
+  {{template "scopes" .Scopes}}
 </main>
 </body>
 </html>

@@ -39,6 +39,7 @@ func NewHandler(s *store.Store, publicURL string) *Handler {
 		publicURL: publicURL,
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
+			"ago":       ago,
 			"linkify":   linkify,
 		}).ParseFS(templateFS, "templates/*.html")),
 		mux: http.NewServeMux(),
@@ -64,6 +65,42 @@ func shortTime(rfc3339 string) string {
 		return rfc3339
 	}
 	return t.Format("Jan 2, 2006 15:04")
+}
+
+// ago is how old an item reads at a glance; the exact time rides in a title
+// attribute next to it.
+func ago(rfc3339 string) string {
+	t, err := time.Parse(time.RFC3339, rfc3339)
+	if err != nil {
+		return rfc3339
+	}
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+	return t.Format("Jan 2, 2006")
+}
+
+// splitVerdict separates the closing note CloseTodo appends to a body from the
+// body proper, so a closed item can show its verdict as its own line.
+func splitVerdict(body string) (text, verdict string) {
+	const mark = "— closed ("
+	i := strings.LastIndex(body, mark)
+	if i < 0 || (i > 0 && !strings.HasSuffix(body[:i], "\n\n")) {
+		return body, ""
+	}
+	_, reason, ok := strings.Cut(body[i:], "): ")
+	if !ok {
+		return body, ""
+	}
+	return strings.TrimSpace(body[:i]), reason
 }
 
 var urlRE = regexp.MustCompile(`https?://[^\s<>"']+`)
@@ -158,9 +195,61 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 // item's own page: opened, and actions return there rather than to the list.
 type todoView struct {
 	store.Todo
+	Text      string // Body without the closing note
+	Verdict   string // the closing note's reason, for closed items
 	Focus     bool
 	BackState string
 	BackScope string
+}
+
+func newTodoView(t store.Todo, focus bool, backState, backScope string) todoView {
+	v := todoView{Todo: t, Text: t.Body, Focus: focus, BackState: backState, BackScope: backScope}
+	if t.State != "open" {
+		v.Text, v.Verdict = splitVerdict(t.Body)
+	}
+	return v
+}
+
+// flash is what the page says after an action, with the reverse beside it.
+// The Back fields tell the reverse where to land, like any action's form.
+type flash struct {
+	Text      string
+	ID        int64
+	Undo      string // form action that reverses it, or ""
+	Link      string // an item to open, or ""
+	BackID    int64
+	BackState string
+	BackScope string
+}
+
+func flashFrom(q url.Values, backID int64, backState, backScope string) *flash {
+	id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
+	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope}
+	switch q.Get("did") {
+	case "closed":
+		f.Undo = "/todo/reopen"
+		if q.Get("outcome") == "dropped" {
+			f.Text = fmt.Sprintf("Dropped #%d.", id)
+		} else {
+			f.Text = fmt.Sprintf("Closed #%d as done.", id)
+		}
+	case "reopened":
+		f.Text = fmt.Sprintf("Reopened #%d.", id)
+	case "added":
+		f.Link = fmt.Sprintf("/todo/%d", id)
+		if q.Get("duplicate") == "true" {
+			f.Text = fmt.Sprintf("Already open as #%d.", id)
+		} else {
+			f.Text = fmt.Sprintf("Filed #%d.", id)
+		}
+	case "saved":
+		f.Text = fmt.Sprintf("Saved #%d.", id)
+	case "renamed":
+		f.Text = "Scope renamed."
+	default:
+		return nil
+	}
+	return f
 }
 
 type scopeGroup struct {
@@ -175,6 +264,7 @@ type indexData struct {
 	Groups []scopeGroup
 	Scopes []store.ScopeCount
 	Counts map[string]int
+	Flash  *flash
 	Error  string
 }
 
@@ -204,7 +294,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 
 	byScope := map[string][]todoView{}
 	for _, t := range todos {
-		byScope[t.Scope] = append(byScope[t.Scope], todoView{Todo: t, BackState: state, BackScope: scope})
+		byScope[t.Scope] = append(byScope[t.Scope], newTodoView(t, false, state, scope))
 	}
 	names := make([]string, 0, len(byScope))
 	for name := range byScope {
@@ -229,14 +319,17 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		Groups: groups,
 		Scopes: scopes,
 		Counts: counts,
+		Flash:  flashFrom(r.URL.Query(), 0, state, scope),
 		Error:  r.URL.Query().Get("err"),
 	})
 }
 
 type itemData struct {
-	Item  todoView
-	URL   string
-	Error string
+	Item   todoView
+	URL    string
+	Scopes []store.ScopeCount
+	Flash  *flash
+	Error  string
 }
 
 // item is an item's own page — the target of its url — with the same
@@ -256,18 +349,28 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	scopes, err := h.store.Scopes()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	h.render(w, "todo.html", itemData{
-		Item:  todoView{Todo: t, Focus: true},
-		URL:   link.Item(link.Base(r, h.publicURL), t.ID),
-		Error: r.URL.Query().Get("err"),
+		Item:   newTodoView(t, true, "", ""),
+		URL:    link.Item(link.Base(r, h.publicURL), t.ID),
+		Scopes: scopes,
+		Flash:  flashFrom(r.URL.Query(), t.ID, "", ""),
+		Error:  r.URL.Query().Get("err"),
 	})
 }
 
 // back redirects to where the action came from — the item's own page when
-// back_id is set, otherwise the list view — carrying any store validation
-// message so the page can show it.
-func back(w http.ResponseWriter, r *http.Request, err error) {
+// back_id is set, otherwise the list view — carrying either what was done
+// (see flashFrom) or the store's validation message, so the page can say so.
+func back(w http.ResponseWriter, r *http.Request, err error, did url.Values) {
 	q := url.Values{}
+	if err == nil {
+		q = did
+	}
 	dest := "/"
 	if id, e := strconv.ParseInt(r.FormValue("back_id"), 10, 64); e == nil {
 		dest = fmt.Sprintf("/todo/%d", id)
@@ -308,16 +411,19 @@ func (h *Handler) add(w http.ResponseWriter, r *http.Request) {
 	// token name, same as any other writer.
 	c, _ := r.Cookie(cookieName)
 	via, _, _ := h.store.Auth(c.Value)
-	_, _, err := h.store.AddTodo(r.FormValue("title"), r.FormValue("body"), r.FormValue("scope"), "web", via)
-	back(w, r, err)
+	id, dup, err := h.store.AddTodo(r.FormValue("title"), r.FormValue("body"), r.FormValue("scope"), "web", via)
+	back(w, r, err, did("added", id, "duplicate", strconv.FormatBool(dup)))
 }
 
 func (h *Handler) close(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
+	outcome := r.FormValue("outcome")
 	if err == nil {
-		_, err = h.store.CloseTodo(id, r.FormValue("outcome"), r.FormValue("reason"))
+		var t store.Todo
+		t, err = h.store.CloseTodo(id, outcome, r.FormValue("reason"))
+		outcome = t.State
 	}
-	back(w, r, err)
+	back(w, r, err, did("closed", id, "outcome", outcome))
 }
 
 func (h *Handler) reopen(w http.ResponseWriter, r *http.Request) {
@@ -326,7 +432,7 @@ func (h *Handler) reopen(w http.ResponseWriter, r *http.Request) {
 		open := "open"
 		_, err = h.store.UpdateTodo(id, store.TodoUpdate{State: &open})
 	}
-	back(w, r, err)
+	back(w, r, err, did("reopened", id))
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
@@ -335,10 +441,23 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		title, body, scope := r.FormValue("title"), r.FormValue("body"), r.FormValue("scope")
 		_, err = h.store.UpdateTodo(id, store.TodoUpdate{Title: &title, Body: &body, Scope: &scope})
 	}
-	back(w, r, err)
+	back(w, r, err, did("saved", id))
 }
 
 func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {
 	_, err := h.store.RenameScope(r.FormValue("from"), r.FormValue("to"))
-	back(w, r, err)
+	back(w, r, err, did("renamed", 0))
+}
+
+// did describes a completed action for back: what happened, to which item,
+// plus any extra key/value pairs.
+func did(what string, id int64, kv ...string) url.Values {
+	q := url.Values{"did": {what}}
+	if id != 0 {
+		q.Set("id", strconv.FormatInt(id, 10))
+	}
+	for i := 0; i+1 < len(kv); i += 2 {
+		q.Set(kv[i], kv[i+1])
+	}
+	return q
 }
