@@ -25,4 +25,4 @@ $ARGUMENTS
 
 **Text present → file.** When the scope was typed, first call `todo_scopes` so the reply can flag a scope that does not exist yet. Then `todo_add {title, body?, scope, source}` with `source` = `/todo in <root> (<branch>)` — `/todo in <root>` when there is no branch.
 
-The reply is exactly one line: `Filed #<id> in <scope>: <title>`, plus ` (already open)` when the result has `duplicate: true`, plus ` (new scope)` when the scope was typed and absent from `todo_scopes`.
+The reply is exactly one line: `Filed #<id> in <scope>: <title> — <url>` with the result's `url`, plus ` (already open)` when the result has `duplicate: true`, plus ` (new scope)` when the scope was typed and absent from `todo_scopes`.

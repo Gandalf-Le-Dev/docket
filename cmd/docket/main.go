@@ -39,7 +39,7 @@ func usage() {
 	fmt.Fprintf(os.Stderr, `docket %s — a self-hosted backlog any agent can write to
 
 Usage:
-  docket serve [-db PATH] [-addr ADDR]
+  docket serve [-db PATH] [-addr ADDR] [-public-url URL]
   docket token new -role publish|review NAME
   docket token revoke NAME
   docket token list
@@ -77,13 +77,16 @@ func serve(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	db := dbFlag(fs)
 	addr := fs.String("addr", envOr("DOCKET_ADDR", ":8340"), "listen address (env: DOCKET_ADDR)")
+	publicURL := fs.String("public-url", envOr("DOCKET_PUBLIC_URL", ""),
+		"origin item links are built on, e.g. https://docket.example.net; "+
+			"defaults to each request's own scheme and host (env: DOCKET_PUBLIC_URL)")
 	fs.Parse(args)
 
 	s := openStore(*db)
 	defer s.Close()
 
 	mux := http.NewServeMux()
-	mux.Handle("/mcp", mcp.NewHandler(s, version))
+	mux.Handle("/mcp", mcp.NewHandler(s, version, *publicURL))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		// Answers 200 only if the database responds — a wedged SQLite file
 		// fails the deploy health check rather than going live dead.
@@ -93,7 +96,7 @@ func serve(args []string) {
 		}
 		fmt.Fprintln(w, "ok")
 	})
-	mux.Handle("/", web.NewHandler(s))
+	mux.Handle("/", web.NewHandler(s, *publicURL))
 
 	log.Printf("docket %s listening on %s (db %s)", version, *addr, *db)
 	if err := http.ListenAndServe(*addr, mux); err != nil {

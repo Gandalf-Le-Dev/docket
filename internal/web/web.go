@@ -6,15 +6,18 @@ package web
 import (
 	"embed"
 	"errors"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Gandalf-Le-Dev/docket/internal/link"
 	"github.com/Gandalf-Le-Dev/docket/internal/store"
 )
 
@@ -24,16 +27,19 @@ var templateFS embed.FS
 const cookieName = "docket_session"
 
 type Handler struct {
-	store *store.Store
-	tmpl  *template.Template
-	mux   *http.ServeMux
+	store     *store.Store
+	publicURL string // see link.Base
+	tmpl      *template.Template
+	mux       *http.ServeMux
 }
 
-func NewHandler(s *store.Store) *Handler {
+func NewHandler(s *store.Store, publicURL string) *Handler {
 	h := &Handler{
-		store: s,
+		store:     s,
+		publicURL: publicURL,
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
+			"linkify":   linkify,
 		}).ParseFS(templateFS, "templates/*.html")),
 		mux: http.NewServeMux(),
 	}
@@ -41,6 +47,7 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /login", h.login)
 	h.mux.HandleFunc("POST /logout", h.logout)
 	h.mux.HandleFunc("GET /{$}", h.requireReview(h.index))
+	h.mux.HandleFunc("GET /todo/{id}", h.requireReview(h.item))
 	h.mux.HandleFunc("POST /add", h.requireReview(h.add))
 	h.mux.HandleFunc("POST /todo/close", h.requireReview(h.close))
 	h.mux.HandleFunc("POST /todo/reopen", h.requireReview(h.reopen))
@@ -59,8 +66,34 @@ func shortTime(rfc3339 string) string {
 	return t.Format("Jan 2, 2006 15:04")
 }
 
-func secureRequest(r *http.Request) bool {
-	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+var urlRE = regexp.MustCompile(`https?://[^\s<>"']+`)
+
+// linkify escapes body text and turns bare URLs into links, so a PR or issue
+// mentioned in an item is one tap away without links being a field of their
+// own. Trailing punctuation stays outside the link; a closing paren is kept
+// only when the URL opened one.
+func linkify(s string) template.HTML {
+	var b strings.Builder
+	last := 0
+	for _, m := range urlRE.FindAllStringIndex(s, -1) {
+		start, end := m[0], m[1]
+		for end > start {
+			c := s[end-1]
+			if c == ')' && strings.Count(s[start:end], "(") >= strings.Count(s[start:end], ")") {
+				break
+			}
+			if !strings.ContainsRune(".,;:!?)", rune(c)) {
+				break
+			}
+			end--
+		}
+		b.WriteString(template.HTMLEscapeString(s[last:start]))
+		u := template.HTMLEscapeString(s[start:end])
+		fmt.Fprintf(&b, `<a href="%s" rel="noopener">%s</a>`, u, u)
+		last = end
+	}
+	b.WriteString(template.HTMLEscapeString(s[last:]))
+	return template.HTML(b.String())
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data any) {
@@ -110,7 +143,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   365 * 24 * 60 * 60,
 		HttpOnly: true,
-		Secure:   secureRequest(r),
+		Secure:   link.HTTPS(r),
 		SameSite: http.SameSiteLaxMode,
 	})
 	http.Redirect(w, r, "/", http.StatusSeeOther)
@@ -121,9 +154,18 @@ func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
+// todoView is one item as the "item" template renders it. Focus marks the
+// item's own page: opened, and actions return there rather than to the list.
+type todoView struct {
+	store.Todo
+	Focus     bool
+	BackState string
+	BackScope string
+}
+
 type scopeGroup struct {
 	Scope string
-	Todos []store.Todo
+	Todos []todoView
 }
 
 type indexData struct {
@@ -160,9 +202,9 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	byScope := map[string][]store.Todo{}
+	byScope := map[string][]todoView{}
 	for _, t := range todos {
-		byScope[t.Scope] = append(byScope[t.Scope], t)
+		byScope[t.Scope] = append(byScope[t.Scope], todoView{Todo: t, BackState: state, BackScope: scope})
 	}
 	names := make([]string, 0, len(byScope))
 	for name := range byScope {
@@ -191,10 +233,45 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// back redirects to the list view the action came from, carrying any store
-// validation message so the page can show it.
+type itemData struct {
+	Item  todoView
+	URL   string
+	Error string
+}
+
+// item is an item's own page — the target of its url — with the same
+// actions as the list.
+func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	t, err := h.store.GetTodo(id)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.render(w, "todo.html", itemData{
+		Item:  todoView{Todo: t, Focus: true},
+		URL:   link.Item(link.Base(r, h.publicURL), t.ID),
+		Error: r.URL.Query().Get("err"),
+	})
+}
+
+// back redirects to where the action came from — the item's own page when
+// back_id is set, otherwise the list view — carrying any store validation
+// message so the page can show it.
 func back(w http.ResponseWriter, r *http.Request, err error) {
 	q := url.Values{}
+	dest := "/"
+	if id, e := strconv.ParseInt(r.FormValue("back_id"), 10, 64); e == nil {
+		dest = fmt.Sprintf("/todo/%d", id)
+	}
 	if s := r.FormValue("back_state"); s != "" && s != "open" {
 		q.Set("state", s)
 	}
@@ -212,7 +289,6 @@ func back(w http.ResponseWriter, r *http.Request, err error) {
 			q.Set("err", "storage failure")
 		}
 	}
-	dest := "/"
 	if len(q) > 0 {
 		dest += "?" + q.Encode()
 	}

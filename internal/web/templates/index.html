@@ -51,67 +51,11 @@
     <p class="empty">Nothing here.</p>
   {{end}}
 
-  {{$state := .State}}{{$scopeFilter := .Scope}}
+  {{$state := .State}}
   {{range .Groups}}
     <h2 class="scope">{{if .Scope}}<a href="/?state={{$state}}&scope={{.Scope}}">{{.Scope}}</a>{{else}}unscoped{{end}}</h2>
     {{range .Todos}}
-      <details class="todo">
-        <summary>
-          <span class="id">#{{.ID}}</span>
-          <span>{{.Title}}</span>
-          {{if eq .State "done"}}<span class="state-done">done</span>{{end}}
-          {{if eq .State "dropped"}}<span class="state-dropped">dropped</span>{{end}}
-        </summary>
-        <div class="todo-detail">
-          {{if .Body}}<div class="body">{{.Body}}</div>{{end}}
-          <div class="meta">
-            filed {{shortTime .CreatedAt}} via {{.Via}}{{if .Source}} · source: {{.Source}}{{end}}{{if .ClosedAt}} · closed {{shortTime .ClosedAt}}{{end}}
-          </div>
-          <div class="actions">
-            {{if eq .State "open"}}
-              <form method="post" action="/todo/close">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="outcome" value="done">
-                <input type="hidden" name="back_state" value="{{$state}}">
-                <input type="hidden" name="back_scope" value="{{$scopeFilter}}">
-                <button type="submit" class="primary">Done</button>
-              </form>
-              <form method="post" action="/todo/close">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="outcome" value="dropped">
-                <input type="hidden" name="back_state" value="{{$state}}">
-                <input type="hidden" name="back_scope" value="{{$scopeFilter}}">
-                <input type="text" name="reason" class="inline-input" placeholder="reason (optional)">
-                <button type="submit" class="danger">Drop</button>
-              </form>
-            {{else}}
-              <form method="post" action="/todo/reopen">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="back_state" value="{{$state}}">
-                <input type="hidden" name="back_scope" value="{{$scopeFilter}}">
-                <button type="submit">Reopen</button>
-              </form>
-            {{end}}
-          </div>
-          <details class="panel" style="margin-top:0.6rem">
-            <summary>Edit</summary>
-            <div class="panel-body">
-              <form method="post" action="/todo/update">
-                <input type="hidden" name="id" value="{{.ID}}">
-                <input type="hidden" name="back_state" value="{{$state}}">
-                <input type="hidden" name="back_scope" value="{{$scopeFilter}}">
-                <label>Title</label>
-                <input type="text" name="title" value="{{.Title}}">
-                <label>Body</label>
-                <textarea name="body">{{.Body}}</textarea>
-                <label>Scope</label>
-                <input type="text" name="scope" value="{{.Scope}}">
-                <p><button type="submit" class="primary">Save</button></p>
-              </form>
-            </div>
-          </details>
-        </div>
-      </details>
+      {{template "item" .}}
     {{end}}
   {{end}}
 

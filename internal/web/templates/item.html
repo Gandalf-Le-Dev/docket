@@ -1,0 +1,59 @@
+{{define "item"}}
+      <details class="todo"{{if .Focus}} open{{end}}>
+        <summary>
+          <a class="id" href="/todo/{{.ID}}">#{{.ID}}</a>
+          <span>{{.Title}}</span>
+          {{if eq .State "done"}}<span class="state-done">done</span>{{end}}
+          {{if eq .State "dropped"}}<span class="state-dropped">dropped</span>{{end}}
+        </summary>
+        <div class="todo-detail">
+          {{if .Body}}<div class="body">{{linkify .Body}}</div>{{end}}
+          <div class="meta">
+            filed {{shortTime .CreatedAt}} via {{.Via}}{{if .Source}} · source: {{.Source}}{{end}}{{if .ClosedAt}} · closed {{shortTime .ClosedAt}}{{end}}
+          </div>
+          <div class="actions">
+            {{if eq .State "open"}}
+              <form method="post" action="/todo/close">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <input type="hidden" name="outcome" value="done">
+                {{template "back" .}}
+                <button type="submit" class="primary">Done</button>
+              </form>
+              <form method="post" action="/todo/close">
+                <input type="hidden" name="id" value="{{.ID}}">
+                <input type="hidden" name="outcome" value="dropped">
+                {{template "back" .}}
+                <input type="text" name="reason" class="inline-input" placeholder="reason (optional)">
+                <button type="submit" class="danger">Drop</button>
+              </form>
+            {{else}}
+              <form method="post" action="/todo/reopen">
+                <input type="hidden" name="id" value="{{.ID}}">
+                {{template "back" .}}
+                <button type="submit">Reopen</button>
+              </form>
+            {{end}}
+          </div>
+          <details class="panel" style="margin-top:0.6rem">
+            <summary>Edit</summary>
+            <div class="panel-body">
+              <form method="post" action="/todo/update">
+                <input type="hidden" name="id" value="{{.ID}}">
+                {{template "back" .}}
+                <label>Title</label>
+                <input type="text" name="title" value="{{.Title}}">
+                <label>Body</label>
+                <textarea name="body">{{.Body}}</textarea>
+                <label>Scope</label>
+                <input type="text" name="scope" value="{{.Scope}}">
+                <p><button type="submit" class="primary">Save</button></p>
+              </form>
+            </div>
+          </details>
+        </div>
+      </details>
+{{end}}
+
+{{/* back: where an action's redirect lands — the item's page, or the list view it came from */}}
+{{define "back"}}{{if .Focus}}<input type="hidden" name="back_id" value="{{.ID}}">{{else}}<input type="hidden" name="back_state" value="{{.BackState}}">
+                <input type="hidden" name="back_scope" value="{{.BackScope}}">{{end}}{{end}}

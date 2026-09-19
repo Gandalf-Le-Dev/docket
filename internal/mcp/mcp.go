@@ -22,6 +22,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Gandalf-Le-Dev/docket/internal/link"
 	"github.com/Gandalf-Le-Dev/docket/internal/store"
 )
 
@@ -62,13 +63,16 @@ const (
 type Handler struct {
 	Store   *store.Store
 	Version string
+	// PublicURL pins the origin item links are built on; empty means the
+	// origin each request arrived on (see link.Base).
+	PublicURL string
 
 	mu   sync.Mutex
 	adds map[string][]time.Time
 }
 
-func NewHandler(s *store.Store, version string) *Handler {
-	return &Handler{Store: s, Version: version, adds: map[string][]time.Time{}}
+func NewHandler(s *store.Store, version, publicURL string) *Handler {
+	return &Handler{Store: s, Version: version, PublicURL: publicURL, adds: map[string][]time.Time{}}
 }
 
 type rpcRequest struct {
@@ -214,7 +218,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		})
 
 	case "tools/call":
-		h.handleToolCall(w, &req, tokenName, role)
+		h.handleToolCall(w, r, &req, tokenName, role)
 
 	default:
 		// Modern servers signal an unknown method with HTTP 404 so a legacy
@@ -289,11 +293,12 @@ func (h *Handler) instructions(role string) string {
 			"but out of scope for the repo or conversation you are in, file it with todo_add " +
 			"instead of dropping it. Always set source to where you noticed it (repo, " +
 			"conversation, URL) — who noticed this is most of the context. Keep the title short; " +
-			"detail goes in body."
+			"detail goes in body. The result carries the item's url, the link to give a person."
 	}
 	return "Docket is the owner's cross-project backlog. Agents file items with todo_add; " +
 		"review, edit, and close them from here with todo_list, todo_get, todo_update, " +
-		"todo_close, and todo_scopes. Closing with outcome=dropped records a deliberate " +
+		"todo_close, and todo_scopes. Every item carries url, the link to hand to a person " +
+		"or paste into a commit message. Closing with outcome=dropped records a deliberate " +
 		"won't-do verdict, which is worth preferring over deleting."
 }
 
@@ -311,7 +316,7 @@ var addTool = toolDef{
 		"that is real but out of scope for the current repo or conversation, so it is not dropped. " +
 		"Always set source to where you noticed it (repo name, conversation, URL). If an open item " +
 		"already has the same title and scope, its id is returned with duplicate=true instead of " +
-		"filing a second copy.",
+		"filing a second copy. The result carries the item's url, the link to give a person.",
 	InputSchema: json.RawMessage(`{
 		"type": "object",
 		"properties": {
@@ -456,7 +461,7 @@ func (h *Handler) allowAdd(tokenName string) bool {
 	return true
 }
 
-func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenName, role string) {
+func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rpcRequest, tokenName, role string) {
 	var p callParams
 	if err := json.Unmarshal(req.Params, &p); err != nil {
 		writeError(w, http.StatusOK, req.ID, codeInvalidParams, "invalid params: "+err.Error(), nil)
@@ -491,6 +496,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 		}
 	}
 
+	base := link.Base(r, h.PublicURL)
 	switch p.Name {
 	case "todo_add":
 		if !h.allowAdd(tokenName) {
@@ -508,7 +514,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 			fail(err)
 			return
 		}
-		toolResult(w, req.ID, map[string]any{"id": id, "duplicate": dup})
+		toolResult(w, req.ID, map[string]any{"id": id, "duplicate": dup, "url": link.Item(base, id)})
 
 	case "todo_list":
 		todos, err := h.Store.ListTodos(
@@ -522,7 +528,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 		}
 		out := make([]map[string]any, 0, len(todos))
 		for _, t := range todos {
-			out = append(out, todoJSON(t))
+			out = append(out, todoJSON(t, base))
 		}
 		toolResult(w, req.ID, map[string]any{"todos": out})
 
@@ -537,7 +543,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 			fail(err)
 			return
 		}
-		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t)})
+		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t, base)})
 
 	case "todo_update":
 		id, ok := intArg(p.Arguments, "id")
@@ -561,7 +567,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 			fail(err)
 			return
 		}
-		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t)})
+		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t, base)})
 
 	case "todo_close":
 		id, ok := intArg(p.Arguments, "id")
@@ -574,7 +580,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 			fail(err)
 			return
 		}
-		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t)})
+		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t, base)})
 
 	case "todo_scopes":
 		scopes, err := h.Store.Scopes()
@@ -590,9 +596,10 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, req *rpcRequest, tokenNa
 	}
 }
 
-func todoJSON(t store.Todo) map[string]any {
+func todoJSON(t store.Todo, base string) map[string]any {
 	m := map[string]any{
 		"id":         t.ID,
+		"url":        link.Item(base, t.ID),
 		"title":      t.Title,
 		"body":       t.Body,
 		"scope":      t.Scope,

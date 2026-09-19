@@ -36,7 +36,7 @@ func newEnv(t *testing.T) *env {
 		t.Fatal(err)
 	}
 
-	srv := httptest.NewServer(NewHandler(s, "test"))
+	srv := httptest.NewServer(NewHandler(s, "test", ""))
 	t.Cleanup(srv.Close)
 	return &env{srv: srv, store: s, publish: pub, review: rev}
 }
@@ -482,4 +482,54 @@ func TestAddRateLimit(t *testing.T) {
 	_, r = e.call(t, e.review, nil,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"review add"}}}`)
 	structured(t, r)
+}
+
+func TestItemURL(t *testing.T) {
+	e := newEnv(t)
+
+	// todo_add hands the link back at once, built on the request's own host.
+	h, b := modernCall("todo_add", `{"title":"needs a link","source":"test"}`)
+	_, r := e.call(t, e.publish, h, b)
+	res := structured(t, r)
+	if res["url"] != e.srv.URL+"/todo/1" {
+		t.Fatalf("todo_add url = %v", res["url"])
+	}
+
+	// Every item result carries it too.
+	h, b = modernCall("todo_get", `{"id":1}`)
+	_, r = e.call(t, e.review, h, b)
+	todo := structured(t, r)["todo"].(map[string]any)
+	if todo["url"] != e.srv.URL+"/todo/1" {
+		t.Fatalf("todo_get url = %v", todo["url"])
+	}
+	h, b = modernCall("todo_list", `{}`)
+	_, r = e.call(t, e.review, h, b)
+	first := structured(t, r)["todos"].([]any)[0].(map[string]any)
+	if first["url"] != e.srv.URL+"/todo/1" {
+		t.Fatalf("todo_list url = %v", first["url"])
+	}
+
+	// Behind a reverse proxy the link is the public one, not the loopback.
+	h, b = modernCall("todo_get", `{"id":1}`)
+	h["X-Forwarded-Proto"] = "https"
+	h["X-Forwarded-Host"] = "docket.example.net"
+	_, r = e.call(t, e.review, h, b)
+	todo = structured(t, r)["todo"].(map[string]any)
+	if todo["url"] != "https://docket.example.net/todo/1" {
+		t.Fatalf("proxied url = %v", todo["url"])
+	}
+}
+
+func TestItemURLConfigured(t *testing.T) {
+	e := newEnv(t)
+	pinned := httptest.NewServer(NewHandler(e.store, "test", "https://todo.example.org/"))
+	t.Cleanup(pinned.Close)
+	e.srv = pinned
+
+	h, b := modernCall("todo_add", `{"title":"pinned","source":"test"}`)
+	h["X-Forwarded-Host"] = "spoofed.example"
+	_, r := e.call(t, e.publish, h, b)
+	if got := structured(t, r)["url"]; got != "https://todo.example.org/todo/1" {
+		t.Fatalf("configured url = %v", got)
+	}
 }

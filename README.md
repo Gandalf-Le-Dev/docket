@@ -185,6 +185,13 @@ config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
 never a fixed list. When names drift apart, the web page has a rename that merges
 them.
 
+Every item in a result carries `url` — its own page on the web UI, `/todo/{id}` —
+the link to hand to a person or paste into a commit message; `todo_add` returns it
+too. The origin is taken from the request, honoring `X-Forwarded-Proto` and
+`X-Forwarded-Host`, so behind a proxy it is your public address. Pin it with
+`-public-url https://docket.example.net` (env `DOCKET_PUBLIC_URL`) if your proxy
+does not forward those headers.
+
 ## Running in Docker
 
 Images are published on tagged releases:
@@ -221,7 +228,9 @@ Two rules, then any host works:
 1. **Terminate TLS in front of it.** Tokens travel in the `Authorization` header and
    a cookie; Docket itself serves plain HTTP on `:8340` and expects a reverse proxy
    (Caddy, nginx, Traefik) to provide HTTPS. Bind the container port to loopback, as
-   above, so nothing reaches it *except* through the proxy.
+   above, so nothing reaches it *except* through the proxy. Item links are built
+   from `X-Forwarded-Proto` and `X-Forwarded-Host` (Caddy and Traefik set them by
+   default; nginx needs `proxy_set_header`), or from `-public-url` if you set it.
 2. **Put the database somewhere that survives redeploys.** Everything lives in one
    SQLite file (default `/var/lib/docket/docket.db`; override with `-db` or
    `DOCKET_DB`). In Docker that means a named volume — never a bind mount inside a

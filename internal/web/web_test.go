@@ -27,7 +27,7 @@ func newEnv(t *testing.T) (*httptest.Server, *store.Store, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(NewHandler(s))
+	srv := httptest.NewServer(NewHandler(s, ""))
 	t.Cleanup(srv.Close)
 	return srv, s, review, publish
 }
@@ -125,4 +125,102 @@ func readAll(t *testing.T, resp *http.Response) string {
 		}
 	}
 	return sb.String()
+}
+
+func login(t *testing.T, c *http.Client, srv *httptest.Server, token string) {
+	t.Helper()
+	resp, err := c.PostForm(srv.URL+"/login", url.Values{"token": {token}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+}
+
+func TestItemPage(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+
+	// The page is gated like the rest.
+	resp, err := c.Get(srv.URL + "/todo/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/login" {
+		t.Fatalf("unauthenticated item page landed on %s", resp.Request.URL.Path)
+	}
+
+	login(t, c, srv, review)
+	id, _, err := s.AddTodo("linkable", "see https://github.com/x/y/pull/7, then (https://example.com/a).", "docket", "test", "phone")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err = c.Get(srv.URL + "/todo/1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, "linkable") {
+		t.Fatalf("item page: %d\n%s", resp.StatusCode, body)
+	}
+	for _, want := range []string{
+		`<details class="todo" open>`,
+		`<a href="https://github.com/x/y/pull/7" rel="noopener">https://github.com/x/y/pull/7</a>,`,
+		`(<a href="https://example.com/a" rel="noopener">https://example.com/a</a>).`,
+		`Link: <a href="` + srv.URL + `/todo/1">`,
+		`name="back_id" value="1"`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("item page missing %q:\n%s", want, body)
+		}
+	}
+
+	// Actions taken on the page return to it.
+	resp, err = c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "outcome": {"done"}, "back_id": {"1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/todo/1" {
+		t.Fatalf("close from item page landed on %s", resp.Request.URL.Path)
+	}
+	if got, _ := s.GetTodo(id); got.State != "done" {
+		t.Fatalf("close from item page: %+v", got)
+	}
+
+	// The list links each item to its page.
+	resp, err = c.Get(srv.URL + "/?state=done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, `<a class="id" href="/todo/1">#1</a>`) {
+		t.Fatalf("list missing permalink:\n%s", body)
+	}
+
+	for _, path := range []string{"/todo/999", "/todo/abc"} {
+		resp, err = c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s: %d", path, resp.StatusCode)
+		}
+	}
+}
+
+func TestLinkify(t *testing.T) {
+	cases := map[string]string{
+		"plain <b>text</b>":                       "plain &lt;b&gt;text&lt;/b&gt;",
+		"https://a.example/p?x=1&y=2":             `<a href="https://a.example/p?x=1&amp;y=2" rel="noopener">https://a.example/p?x=1&amp;y=2</a>`,
+		"end. https://a.example/q.":               `end. <a href="https://a.example/q" rel="noopener">https://a.example/q</a>.`,
+		"https://en.wikipedia.org/wiki/Go_(game)": `<a href="https://en.wikipedia.org/wiki/Go_(game)" rel="noopener">https://en.wikipedia.org/wiki/Go_(game)</a>`,
+		"'https://a.example/x'":                   `&#39;<a href="https://a.example/x" rel="noopener">https://a.example/x</a>&#39;`,
+	}
+	for in, want := range cases {
+		if got := string(linkify(in)); got != want {
+			t.Errorf("linkify(%q)\n got %s\nwant %s", in, got, want)
+		}
+	}
 }
