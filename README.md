@@ -96,10 +96,10 @@ happens only through the `docket token` CLI on the machine that holds the databa
 Mint each agent machine its own token — **review** if it should also read and pick
 up work, **publish** if it should only file (see the roles above).
 
-**Claude Code:**
+**Claude Code** — user scope, so the backlog is reachable from every project:
 
 ```sh
-claude mcp add --transport http docket https://docket.example.net/mcp \
+claude mcp add --scope user --transport http docket https://docket.example.net/mcp \
   --header "Authorization: Bearer dkt_YOUR_TOKEN"
 ```
 
@@ -126,20 +126,45 @@ equivalent): *"Work that is real but out of scope for the current repo goes to
 Docket's `todo_add`, with `source` set to where you noticed it."* The tool's own
 description says the same, so even an uninstructed agent files things sensibly.
 
-**Filing by hand from Claude Code.** This repo ships a `/todo` slash command
-([`contrib/claude-code/skills/todo`](contrib/claude-code/skills/todo/SKILL.md)) — one
-file, installed straight from GitHub:
+**Claude Code extras.** Three one-file pieces under
+[`contrib/claude-code`](contrib/claude-code), installed straight from GitHub — no
+checkout needed:
 
 ```sh
-mkdir -p ~/.claude/skills/todo && curl -fsSL -o ~/.claude/skills/todo/SKILL.md \
-  https://raw.githubusercontent.com/Gandalf-Le-Dev/docket/main/contrib/claude-code/skills/todo/SKILL.md
+base=https://raw.githubusercontent.com/Gandalf-Le-Dev/docket/main/contrib/claude-code
+mkdir -p ~/.claude/skills/todo ~/.claude/skills/done ~/.claude/hooks
+curl -fsSL -o ~/.claude/skills/todo/SKILL.md       $base/skills/todo/SKILL.md
+curl -fsSL -o ~/.claude/skills/done/SKILL.md       $base/skills/done/SKILL.md
+curl -fsSL -o ~/.claude/hooks/docket-open-items.sh $base/hooks/docket-open-items.sh
 ```
 
-Then `/todo fix the flaky store test` files an item scoped to the repo you are in,
-`/todo hopbox: egress allowlist still skipped` files into another scope, and a bare
-`/todo` lists the current repo's open items (that last one needs a review token).
-The reply is one line — `Filed #16 in docket: …` — with `(already open)` when Docket
-deduplicated it and `(new scope)` when you typed a scope that did not exist yet.
+- **`/todo`** files by hand. `/todo fix the flaky store test` files an item scoped to
+  the repo you are in; `/todo hopbox: egress allowlist still skipped` files into
+  another scope; a bare `/todo` lists the current repo's open items. The reply is
+  one line — `Filed #16 in docket: …` — with `(already open)` when Docket
+  deduplicated it and `(new scope)` when you typed a scope that did not exist yet.
+- **`/done`** closes by hand: `/done 16 shipped in 609cad1` as done,
+  `/done drop 16 not worth it` as dropped.
+- **The hook** is what makes the agent close things on its own. At session start
+  it lists the repo's open items into context, so the agent knows what it can pick
+  up and calls `todo_close` when it completes one. It reads the URL and token from
+  the `docket` entry `claude mcp add` wrote, and stays silent when nothing is open.
+  Enable it in `~/.claude/settings.json`:
+
+  ```json
+  {
+    "hooks": {
+      "SessionStart": [
+        {
+          "matcher": "^(startup|resume|clear|compact)$",
+          "hooks": [{ "type": "command", "command": "sh ~/.claude/hooks/docket-open-items.sh", "timeout": 10 }]
+        }
+      ]
+    }
+  }
+  ```
+
+Listing and closing need a review token; filing works with either.
 
 To manage the backlog *from* an agent (triage from your desktop, say), add the same
 config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
