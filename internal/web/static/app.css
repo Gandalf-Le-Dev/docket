@@ -122,25 +122,27 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border: var(--hairline) solid var(--border);
 }
 
-/* --- page chrome --- */
+/* --- page chrome ---
+   A band bleeds to the window's edge while its content stays within page-max,
+   so a wide window reads as a page rather than a slab with the sides cut off. */
 .shell { max-width: var(--page-max); margin: 0 auto; }
+.band { background: var(--surface-raised); }
 .hdr { display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-5) var(--space-5) var(--space-4); background: var(--surface-raised); }
+  padding: var(--space-5) var(--space-5) var(--space-4); }
 .wm { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;
   color: var(--ink); text-decoration: none; }
 .mark { display: block; color: var(--ink); }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
-.summary { padding: 0 var(--space-5) var(--space-4); background: var(--surface-raised); }
+.summary { padding: 0 var(--space-5) var(--space-4); }
 .nav { display: flex; gap: var(--space-5); padding: 0 var(--space-5);
-  border-bottom: var(--hairline) solid var(--border); background: var(--surface-raised); }
+  border-bottom: var(--hairline) solid var(--border); }
 .nav a { text-decoration: none; color: var(--ink-muted); padding-bottom: var(--space-3);
   margin-bottom: -1px; border-bottom: 2px solid transparent; }
 .nav a.on { color: var(--ink); border-bottom-color: var(--ink); }
 .nav .n { font-family: var(--font-mono); font-size: 11px; font-weight: 500; margin-left: 6px; color: var(--ink-muted); }
 .toolbar { display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-5); background: var(--surface-raised);
-  border-bottom: var(--hairline) solid var(--border); flex-wrap: wrap; }
+  padding: var(--space-3) var(--space-5); flex-wrap: wrap; }
 .pill { display: inline-flex; align-items: center; gap: 6px; height: var(--control-height-sm);
   padding: 0 var(--space-3); border-radius: var(--radius-md);
   border: var(--hairline) solid var(--border); background: var(--surface-raised);
@@ -219,12 +221,14 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 
 /* --- the entry on its own page --- */
 .crumbbar { display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-4) var(--space-5); background: var(--surface-raised);
+  padding: var(--space-4) var(--space-5);
   border-bottom: var(--hairline) solid var(--border); }
 .crumbbar a { color: var(--ink-muted); text-decoration: none; font-size: 13px; font-weight: 500; }
 .crumbbar .url { margin-left: auto; font-family: var(--font-mono); font-size: 12px;
   font-weight: 500; color: var(--ink-muted); word-break: break-all; }
-.sheet { background: var(--surface-raised); padding: var(--space-6) var(--space-7); min-height: 60vh; }
+/* a document column, not a slab: content-max plus its padding */
+.sheet { background: var(--surface-raised); padding: var(--space-6) var(--space-7);
+  max-width: 776px; border-radius: 0 0 var(--radius-md) var(--radius-md); }
 .sheet .text { font-size: 15px; line-height: 24px; color: var(--ink); max-width: 62ch;
   white-space: pre-wrap; word-break: break-word; }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }

@@ -7,16 +7,20 @@
 <body>
 <div class="with-drawer">
 <div class="main">
-<div class="shell">
-  {{template "header" .}}
-  <div class="summary ui muted">
-    {{if eq .State "open"}}
-      {{if .Total}}{{.Total}} open across {{.PanelCount}} scope{{if ne .PanelCount 1}}s{{end}}
-      {{else}}nothing open{{end}}
-    {{else}}{{.Total}} {{.State}}{{end}}
+<div class="band">
+  <div class="shell">
+    {{template "header" .}}
+    <div class="summary ui muted">
+      {{if eq .State "open"}}
+        {{if .Total}}{{.Total}} open across {{.PanelCount}} scope{{if ne .PanelCount 1}}s{{end}}
+        {{else}}nothing open{{end}}
+      {{else}}{{.Total}} {{.State}}{{end}}
+    </div>
+    {{template "nav" .}}
+    {{template "toolbar" .}}
   </div>
-  {{template "nav" .}}
-  {{template "toolbar" .}}
+</div>
+<div class="shell">
   {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 

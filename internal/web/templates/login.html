@@ -5,11 +5,15 @@
   <title>docket — sign in</title>
 </head>
 <body>
+<div class="band">
+  <div class="shell">
+    <header class="hdr">
+      {{template "mark" .}}
+      <span class="wm">docket</span>
+    </header>
+  </div>
+</div>
 <div class="shell">
-  <header class="hdr">
-    {{template "mark" .}}
-    <span class="wm">docket</span>
-  </header>
   <div class="login">
     {{if .Error}}<div class="error" style="margin: 0 0 var(--space-5)">{{.Error}}</div>{{end}}
     <h1 class="heading" style="margin: 0 0 var(--space-2)">Sign in</h1>

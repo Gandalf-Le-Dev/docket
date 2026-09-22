@@ -5,19 +5,21 @@
   <title>#{{.Item.ID}} {{.Item.Title}} · docket</title>
 </head>
 <body>
-<div class="shell">
-  <header class="hdr">
-    {{template "mark" .}}
-    <a class="wm" href="/">docket</a>
-  </header>
-
-  <div class="crumbbar">
-    <a href="/">← all entries</a>
-    {{if .Item.Scope}}<span class="crumb code-sm muted">/</span>
-      <a href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{end}}
-    <span class="url">{{.URL}}</span>
+<div class="band">
+  <div class="shell">
+    <header class="hdr">
+      {{template "mark" .}}
+      <a class="wm" href="/">docket</a>
+    </header>
+    <div class="crumbbar">
+      <a href="/">← all entries</a>
+      {{if .Item.Scope}}<span class="crumb code-sm muted">/</span>
+        <a href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{end}}
+      <span class="url">{{.URL}}</span>
+    </div>
   </div>
-
+</div>
+<div class="shell">
   {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
