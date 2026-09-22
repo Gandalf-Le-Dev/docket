@@ -338,6 +338,37 @@ func (s *Store) Scopes() ([]ScopeCount, error) {
 	return out, rows.Err()
 }
 
+// ScopeStats is one scope with a count per state. Unlike Scopes, it includes
+// scopes whose items are all closed — the web page lists those too, so that a
+// project you finished does not simply vanish.
+type ScopeStats struct {
+	Scope   string
+	Open    int
+	Done    int
+	Dropped int
+}
+
+// ScopeSummaries is every scope that has ever held an item, with its counts,
+// ordered by name. Unscoped items group under "".
+func (s *Store) ScopeSummaries() ([]ScopeStats, error) {
+	rows, err := s.db.Query(`SELECT scope,
+		SUM(state = 'open'), SUM(state = 'done'), SUM(state = 'dropped')
+		FROM todo GROUP BY scope ORDER BY scope`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ScopeStats
+	for rows.Next() {
+		var st ScopeStats
+		if err := rows.Scan(&st.Scope, &st.Open, &st.Done, &st.Dropped); err != nil {
+			return nil, err
+		}
+		out = append(out, st)
+	}
+	return out, rows.Err()
+}
+
 // RenameScope merges scope drift ("hopbox" and "hop-box") in one UPDATE.
 func (s *Store) RenameScope(from, to string) (int64, error) {
 	from, to = NormalizeScope(from), NormalizeScope(to)

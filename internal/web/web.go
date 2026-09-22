@@ -1,10 +1,17 @@
 // Package web is Docket's human surface: one server-rendered page for
-// reviewing the backlog from a phone. Plain forms, no build step, no JS.
-// Auth is the review token, entered once per device and kept in a cookie.
+// reviewing the backlog. Plain forms, no build step, no JS — opening an entry
+// is a link to ?open=<id>, so the drawer is server-rendered like everything
+// else and its URL can be shared.
+//
+// The look is the mroc design system: tokens, type and marks come from
+// static/app.css, which is copied from that repository rather than invented
+// here. Auth is the review token, entered once per device and kept in a cookie.
 package web
 
 import (
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"html/template"
@@ -24,11 +31,19 @@ import (
 //go:embed templates/*.html
 var templateFS embed.FS
 
+//go:embed static
+var staticFS embed.FS
+
+// panelCap is how many open entries a scope shows before it offers the rest
+// behind a link. One loud project must not push every other scope off screen.
+const panelCap = 5
+
 const cookieName = "docket_session"
 
 type Handler struct {
 	store     *store.Store
 	publicURL string // see link.Base
+	assetVer  string // content hash, so a deploy busts the year-long cache
 	tmpl      *template.Template
 	mux       *http.ServeMux
 }
@@ -37,13 +52,17 @@ func NewHandler(s *store.Store, publicURL string) *Handler {
 	h := &Handler{
 		store:     s,
 		publicURL: publicURL,
+		assetVer:  hashAsset("static/app.css"),
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
 			"ago":       ago,
 			"linkify":   linkify,
+			"query":     query,
+			"dict":      dict,
 		}).ParseFS(templateFS, "templates/*.html")),
 		mux: http.NewServeMux(),
 	}
+	h.mux.Handle("GET /static/", http.StripPrefix("/", cacheStatic(http.FileServer(http.FS(staticFS)))))
 	h.mux.HandleFunc("GET /login", h.loginForm)
 	h.mux.HandleFunc("POST /login", h.login)
 	h.mux.HandleFunc("POST /logout", h.logout)
@@ -58,6 +77,56 @@ func NewHandler(s *store.Store, publicURL string) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.mux.ServeHTTP(w, r) }
+
+// cacheStatic lets the fonts and stylesheet be cached hard: they change only
+// when the binary does, and the binary is the only thing that serves them.
+func cacheStatic(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "public, max-age=604800")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// AssetVer is the fingerprint templates append to the stylesheet's URL.
+func (h *Handler) AssetVer() string { return h.assetVer }
+
+// hashAsset fingerprints an embedded file so its URL changes when it does.
+// Without it the long cache below would serve last week's stylesheet.
+func hashAsset(name string) string {
+	b, err := staticFS.ReadFile(name)
+	if err != nil {
+		return "dev"
+	}
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:4])
+}
+
+// dict lets a template pass both an item and the page around it to a
+// sub-template, which Go templates otherwise make impossible.
+func dict(pairs ...any) map[string]any {
+	m := map[string]any{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if k, ok := pairs[i].(string); ok {
+			m[k] = pairs[i+1]
+		}
+	}
+	return m
+}
+
+// query builds a link back into the list, keeping whichever of state, scope
+// and q are set. Templates call it rather than assembling URLs by hand.
+func query(pairs ...string) template.URL {
+	v := url.Values{}
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if pairs[i+1] != "" && !(pairs[i] == "state" && pairs[i+1] == "open") {
+			v.Set(pairs[i], pairs[i+1])
+		}
+	}
+	if len(v) == 0 {
+		return template.URL("/")
+	}
+	return template.URL("/?" + v.Encode())
+}
 
 func shortTime(rfc3339 string) string {
 	t, err := time.Parse(time.RFC3339, rfc3339)
@@ -89,18 +158,21 @@ func ago(rfc3339 string) string {
 }
 
 // splitVerdict separates the closing note CloseTodo appends to a body from the
-// body proper, so a closed item can show its verdict as its own line.
-func splitVerdict(body string) (text, verdict string) {
+// body proper, so a closed item can show its verdict as its own line. It
+// returns the outcome the note records as well as its reason: an item that was
+// dropped, reopened and then finished carries both notes, and only the one
+// matching the item's current state describes it.
+func splitVerdict(body string) (text, outcome, reason string) {
 	const mark = "— closed ("
 	i := strings.LastIndex(body, mark)
 	if i < 0 || (i > 0 && !strings.HasSuffix(body[:i], "\n\n")) {
-		return body, ""
+		return body, "", ""
 	}
-	_, reason, ok := strings.Cut(body[i:], "): ")
-	if !ok {
-		return body, ""
+	head, rest, ok := strings.Cut(body[i+len(mark):], "): ")
+	if !ok || strings.ContainsAny(head, "\n") {
+		return body, "", ""
 	}
-	return strings.TrimSpace(body[:i]), reason
+	return strings.TrimSpace(body[:i]), head, rest
 }
 
 var urlRE = regexp.MustCompile(`https?://[^\s<>"']+`)
@@ -156,11 +228,13 @@ func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 }
 
 type loginData struct {
+	State string // unused, but "head" and the chrome share one shape
 	Error string
+	Asset string // stylesheet fingerprint
 }
 
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login.html", loginData{Error: r.URL.Query().Get("err")})
+	h.render(w, "login.html", loginData{Asset: h.assetVer, Error: r.URL.Query().Get("err")})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -205,7 +279,12 @@ type todoView struct {
 func newTodoView(t store.Todo, focus bool, backState, backScope string) todoView {
 	v := todoView{Todo: t, Text: t.Body, Focus: focus, BackState: backState, BackScope: backScope}
 	if t.State != "open" {
-		v.Text, v.Verdict = splitVerdict(t.Body)
+		text, outcome, reason := splitVerdict(t.Body)
+		// A stale note from an earlier close stays in the body rather than
+		// being presented as this item's verdict.
+		if outcome == t.State {
+			v.Text, v.Verdict = text, reason
+		}
 	}
 	return v
 }
@@ -252,31 +331,104 @@ func flashFrom(q url.Values, backID int64, backState, backScope string) *flash {
 	return f
 }
 
-type scopeGroup struct {
-	Scope string
-	Todos []todoView
+// panelView is one scope as the page draws it: its counts, the entries that
+// fit, and how many did not.
+type panelView struct {
+	Scope   string
+	Open    int
+	Done    int
+	Dropped int
+	Entries []todoView
+	More    int
+}
+
+// Counts reads "2 open · 12 done · 1 dropped", leaving out the states that are
+// empty so a young scope does not carry two zeroes.
+func (p panelView) Counts() string {
+	var parts []string
+	for _, c := range []struct {
+		n    int
+		name string
+	}{{p.Open, "open"}, {p.Done, "done"}, {p.Dropped, "dropped"}} {
+		if c.n > 0 {
+			parts = append(parts, fmt.Sprintf("%d %s", c.n, c.name))
+		}
+	}
+	if len(parts) == 0 {
+		return "empty"
+	}
+	return strings.Join(parts, " · ")
+}
+
+// PanelCount is how many scopes the page is showing, for the summary line.
+func (d indexData) PanelCount() int { return len(d.Left) + len(d.Right) }
+
+func (p panelView) Name() string {
+	if p.Scope == "" {
+		return "unscoped"
+	}
+	return p.Scope
 }
 
 type indexData struct {
 	State  string
 	Scope  string
 	Query  string
-	Groups []scopeGroup
-	Scopes []store.ScopeCount
-	Counts map[string]int
+	Left   []panelView
+	Right  []panelView
+	Quiet  []string // scopes with nothing in this state
+	Total  int
+	Counts map[string]int // per state, for the tabs
+	Scopes []store.ScopeStats
+	Open   *todoView // the drawer's entry, when ?open= named one
+	URL    string    // that entry's own url
 	Flash  *flash
 	Error  string
+	Asset  string // stylesheet fingerprint
+}
+
+// pack lays the panels into two columns the way a mason would: tallest first,
+// each one onto whichever column is shorter. The browser cannot be trusted to
+// balance columns itself once panels may not be split.
+func pack(panels []panelView) (left, right []panelView) {
+	order := make([]panelView, len(panels))
+	copy(order, panels)
+	sort.SliceStable(order, func(i, j int) bool { return len(order[i].Entries) > len(order[j].Entries) })
+	var lh, rh int
+	for _, p := range order {
+		// a panel costs its header plus a line per entry, near enough
+		cost := 2 + len(p.Entries)
+		if lh <= rh {
+			left = append(left, p)
+			lh += cost
+		} else {
+			right = append(right, p)
+			rh += cost
+		}
+	}
+	sortByScope := func(ps []panelView) {
+		sort.SliceStable(ps, func(i, j int) bool {
+			if (ps[i].Scope == "") != (ps[j].Scope == "") {
+				return ps[j].Scope == ""
+			}
+			return ps[i].Scope < ps[j].Scope
+		})
+	}
+	sortByScope(left)
+	sortByScope(right)
+	return left, right
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
-	state := r.URL.Query().Get("state")
+	q := r.URL.Query()
+	state := q.Get("state")
 	if state == "" {
 		state = "open"
 	}
-	scope := r.URL.Query().Get("scope")
-	query := r.URL.Query().Get("q")
+	scope := store.NormalizeScope(q.Get("scope"))
+	search := q.Get("q")
 
-	todos, err := h.store.ListTodos(state, scope, query)
+	todos, err := h.store.ListTodos(state, scope, search)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -286,7 +438,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	scopes, err := h.store.Scopes()
+	summaries, err := h.store.ScopeSummaries()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -296,40 +448,69 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	for _, t := range todos {
 		byScope[t.Scope] = append(byScope[t.Scope], newTodoView(t, false, state, scope))
 	}
-	names := make([]string, 0, len(byScope))
-	for name := range byScope {
-		names = append(names, name)
-	}
-	// Alphabetical, with unscoped items last rather than first.
-	sort.Slice(names, func(i, j int) bool {
-		if (names[i] == "") != (names[j] == "") {
-			return names[j] == ""
-		}
-		return names[i] < names[j]
-	})
-	groups := make([]scopeGroup, 0, len(names))
-	for _, name := range names {
-		groups = append(groups, scopeGroup{Scope: name, Todos: byScope[name]})
-	}
 
-	h.render(w, "index.html", indexData{
+	var panels []panelView
+	var quiet []string
+	for _, sum := range summaries {
+		if scope != "" && sum.Scope != scope {
+			continue
+		}
+		entries := byScope[sum.Scope]
+		p := panelView{Scope: sum.Scope, Open: sum.Open, Done: sum.Done, Dropped: sum.Dropped}
+		if len(entries) == 0 {
+			// A scope with nothing in this state is still a scope. One with
+			// nothing at all in it folds into a line at the foot instead.
+			if sum.Open+sum.Done+sum.Dropped == 0 || (scope == "" && search == "") {
+				quiet = append(quiet, p.Name())
+				continue
+			}
+			panels = append(panels, p)
+			continue
+		}
+		// The cap keeps one loud scope from filling the page. Once you have
+		// asked for a single scope, or searched, it would only hide what you
+		// asked for — and its "more" link would point back at this same page.
+		if scope == "" && search == "" && len(entries) > panelCap {
+			p.More = len(entries) - panelCap
+			entries = entries[:panelCap]
+		}
+		p.Entries = entries
+		panels = append(panels, p)
+	}
+	left, right := pack(panels)
+
+	data := indexData{
 		State:  state,
 		Scope:  scope,
-		Query:  query,
-		Groups: groups,
-		Scopes: scopes,
+		Query:  search,
+		Left:   left,
+		Right:  right,
+		Quiet:  quiet,
+		Total:  len(todos),
 		Counts: counts,
-		Flash:  flashFrom(r.URL.Query(), 0, state, scope),
-		Error:  r.URL.Query().Get("err"),
-	})
+		Scopes: summaries,
+		Flash:  flashFrom(q, 0, state, scope),
+		Error:  q.Get("err"),
+	}
+	if id, err := strconv.ParseInt(q.Get("open"), 10, 64); err == nil && id > 0 {
+		if t, err := h.store.GetTodo(id); err == nil {
+			v := newTodoView(t, true, state, scope)
+			data.Open = &v
+			data.URL = link.Item(link.Base(r, h.publicURL), t.ID)
+		}
+	}
+	data.Asset = h.assetVer
+	h.render(w, "index.html", data)
 }
 
 type itemData struct {
 	Item   todoView
 	URL    string
-	Scopes []store.ScopeCount
+	Scopes []store.ScopeStats
+	State  string
 	Flash  *flash
 	Error  string
+	Asset  string // stylesheet fingerprint
 }
 
 // item is an item's own page — the target of its url — with the same
@@ -349,15 +530,17 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	scopes, err := h.store.Scopes()
+	scopes, err := h.store.ScopeSummaries()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	h.render(w, "todo.html", itemData{
+		Asset:  h.assetVer,
 		Item:   newTodoView(t, true, "", ""),
 		URL:    link.Item(link.Base(r, h.publicURL), t.ID),
 		Scopes: scopes,
+		State:  t.State,
 		Flash:  flashFrom(r.URL.Query(), t.ID, "", ""),
 		Error:  r.URL.Query().Get("err"),
 	})

@@ -12,9 +12,10 @@ Docket is the destination. One small server you host yourself:
 
 - **Agents file items** with a `todo_add` tool, from any machine, any repo, any
   platform — each carrying a `source` that records who noticed it.
-- **You and your agents work them** from a phone-friendly built-in web page or via
-  the full tool set: list, pick one up, edit, close as *done*, or close as *dropped*
-  ("deliberately not doing this" is a verdict worth keeping).
+- **You and your agents work them** from a built-in web page — a panel per project,
+  so you can see at a glance which one is loaded — or via the full tool set: list,
+  pick one up, edit, close as *done*, or close as *dropped* ("deliberately not doing
+  this" is a verdict worth keeping).
 - **You choose who reads.** Every machine gets its own named token — full-access
   *review* tokens for you and for agents that pick up work, and optional add-only
   *publish* tokens for machines that should only ever file.
@@ -182,8 +183,9 @@ config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
 | `todo_scopes {}` | review | The scopes in use, with open counts. |
 
 `scope` is a freeform grouping label ("hopbox", "personal", "idea") — lowercased,
-never a fixed list. When names drift apart, the web page has a rename that merges
-them.
+never a fixed list. It is the web page's organising idea: each scope gets a panel,
+and a scope is a filter rather than a place, so clicking its name narrows the page
+to it. When names drift apart, the page has a rename that merges them.
 
 Every item in a result carries `url` — its own page on the web UI, `/todo/{id}` —
 the link to hand to a person or paste into a commit message; `todo_add` returns it
@@ -191,6 +193,26 @@ too. The origin is taken from the request, honoring `X-Forwarded-Proto` and
 `X-Forwarded-Host`, so behind a proxy it is your public address. Pin it with
 `-public-url https://docket.example.net` (env `DOCKET_PUBLIC_URL`) if your proxy
 does not forward those headers.
+
+## The web page
+
+One page, server-rendered, no JavaScript and no build step. Every scope is a panel;
+the panels pack into two columns, tallest first, so a quiet project does not leave a
+hole. A busy scope shows its first five entries and offers the rest behind a link,
+and scopes with nothing in the state you are looking at fold into one line at the
+foot.
+
+Clicking an entry opens it in a drawer beside the list — that is a link to
+`/?open=<id>`, so it is a normal page load, the back button works, and the URL can
+be pasted to someone. The `#<id>` in the drawer's header opens the entry's own page
+at `/todo/<id>`, which is where editing and dropping live.
+
+The look is the [mroc design system](https://github.com/Gandalf-Le-Dev/mroc-design-system):
+`internal/web/static/app.css` holds its tokens and `internal/web/static/fonts/` its
+two typefaces, both copied from that repository rather than restated here — change a
+value there and copy it across. Paper and ink themes both ship and follow the
+operating system unless `data-theme` says otherwise. The fonts are SIL OFL and their
+licences travel with them.
 
 ## Running in Docker
 

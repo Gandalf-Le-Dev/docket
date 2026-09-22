@@ -1,22 +1,26 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Docket — sign in</title>
-  {{template "style" .}}
+  {{template "head" .}}
+  <title>docket — sign in</title>
 </head>
 <body>
-<main>
-  <header class="top"><h1>Docket</h1></header>
-  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
-  <p>Paste a <strong>review</strong> token to open the backlog. It is stored as a
-  cookie on this device; you only do this once.</p>
-  <form method="post" action="/login">
-    <label for="token">Review token</label>
-    <input type="password" id="token" name="token" autocomplete="current-password" autofocus>
-    <p><button type="submit" class="primary">Sign in</button></p>
-  </form>
-</main>
+<div class="shell">
+  <header class="hdr">
+    {{template "mark" .}}
+    <span class="wm">docket</span>
+  </header>
+  <div class="login">
+    {{if .Error}}<div class="error" style="margin: 0 0 var(--space-5)">{{.Error}}</div>{{end}}
+    <h1 class="heading" style="margin: 0 0 var(--space-2)">Sign in</h1>
+    <p class="body muted" style="margin: 0 0 var(--space-5)">
+      Paste a review token. It is kept in a cookie on this device, so you do this once.</p>
+    <form method="post" action="/login">
+      <label for="token">Review token</label>
+      <input type="password" id="token" name="token" autocomplete="current-password" autofocus>
+      <p><button type="submit" class="btn btn--primary">Sign in</button></p>
+    </form>
+  </div>
+</div>
 </body>
 </html>

@@ -1,109 +1,114 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Docket</title>
-  {{template "style" .}}
+  {{template "head" .}}
+  <title>docket</title>
 </head>
 <body>
-<main>
-  <header class="top">
-    <h1>Docket</h1>
-    <form method="post" action="/logout"><button type="submit" class="link">Sign out</button></form>
-  </header>
-
+<div class="with-drawer">
+<div class="main">
+<div class="shell">
+  {{template "header" .}}
+  <div class="summary ui muted">
+    {{if eq .State "open"}}
+      {{if .Total}}{{.Total}} open across {{.PanelCount}} scope{{if ne .PanelCount 1}}s{{end}}
+      {{else}}nothing open{{end}}
+    {{else}}{{.Total}} {{.State}}{{end}}
+  </div>
+  {{template "nav" .}}
+  {{template "toolbar" .}}
   {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
-  {{$state := .State}}{{$scope := .Scope}}{{$q := .Query}}
-  <nav class="tabs">
-    <a href="/{{if $scope}}?scope={{$scope}}{{end}}" {{if eq .State "open"}}class="on"{{end}}>Open {{index .Counts "open"}}</a>
-    <a href="/?state=done{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "done"}}class="on"{{end}}>Done {{index .Counts "done"}}</a>
-    <a href="/?state=dropped{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "dropped"}}class="on"{{end}}>Dropped {{index .Counts "dropped"}}</a>
-    <a href="/?state=all{{if $scope}}&scope={{$scope}}{{end}}" {{if eq .State "all"}}class="on"{{end}}>All</a>
-    {{if $q}}<a class="on" href="/?state={{$state}}{{if $scope}}&scope={{$scope}}{{end}}">“{{$q}}” ✕</a>{{end}}
-  </nav>
-
-  <form method="get" action="/" class="searchbar" role="search">
-    <input type="hidden" name="state" value="{{.State}}">
-    {{if $scope}}<input type="hidden" name="scope" value="{{$scope}}">{{end}}
-    <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
-    <button type="submit">Search</button>
-  </form>
-
-  {{if .Scopes}}
-  <nav class="scopes" aria-label="Scopes">
-    {{range .Scopes}}{{if .Scope}}
-      {{if eq .Scope $scope}}
-        <a class="on" href="/?state={{$state}}{{if $q}}&q={{$q}}{{end}}">{{.Scope}} ✕</a>
-      {{else}}
-        <a href="/?state={{$state}}&scope={{.Scope}}{{if $q}}&q={{$q}}{{end}}">{{.Scope}}{{if eq $state "open"}}<b>{{.Open}}</b>{{end}}</a>
-      {{end}}
-    {{end}}{{end}}
-  </nav>
-  {{end}}
-
-  <details class="tool">
-    <summary>Add an item</summary>
-    <div class="panel-body">
-      <form method="post" action="/add">
-        <input type="hidden" name="back_state" value="{{.State}}">
-        <input type="hidden" name="back_scope" value="{{.Scope}}">
-        <label for="add-title">Title</label>
-        <input type="text" id="add-title" name="title" required placeholder="What needs doing">
-        <label for="add-body">Body</label>
-        <textarea id="add-body" name="body" placeholder="Context, links, why it matters"></textarea>
-        <label for="add-scope">Scope</label>
-        <input type="text" id="add-scope" name="scope" list="scopes" value="{{.Scope}}" placeholder="A project name, or personal">
-        <p><button type="submit" class="primary">File it</button></p>
-      </form>
-    </div>
-  </details>
-
-  {{if not .Groups}}
-    <p class="empty">
-      {{if $q}}Nothing matches “{{$q}}”.
-      {{else if $scope}}Nothing {{if ne $state "all"}}{{$state}} {{end}}in {{$scope}}.
-      {{else if eq $state "open"}}Nothing open. Agents file items here with <code>todo_add</code>, or add one above.
-      {{else}}Nothing {{if ne $state "all"}}{{$state}} {{end}}yet.{{end}}
-    </p>
-  {{end}}
-
-  {{range .Groups}}
-    <section class="scope">
-      <h2>{{if .Scope}}<a href="/?state={{$state}}&scope={{.Scope}}">{{.Scope}}</a>{{else}}unscoped{{end}} <span class="count">{{len .Todos}}</span></h2>
-      {{range .Todos}}{{template "item" .}}{{end}}
-    </section>
-  {{end}}
-
-  {{if .Scopes}}
-  <div class="footer-tools">
-    <details class="tool">
-      <summary>Rename a scope</summary>
-      <div class="panel-body">
-        <form method="post" action="/scope/rename">
-          <input type="hidden" name="back_state" value="{{.State}}">
-          <div class="row">
-            <div>
-              <label for="rename-from">From</label>
-              <select id="rename-from" name="from">
-                {{range .Scopes}}<option value="{{.Scope}}">{{if .Scope}}{{.Scope}}{{else}}(unscoped){{end}} — {{.Open}} open</option>{{end}}
-              </select>
-            </div>
-            <div>
-              <label for="rename-to">To</label>
-              <input type="text" id="rename-to" name="to" list="scopes">
-            </div>
-          </div>
-          <p><button type="submit">Rename</button></p>
-        </form>
-      </div>
-    </details>
+  {{if or .Left .Right}}
+  <div class="cols">
+    <div class="col">{{range .Left}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
+    <div class="col">{{range .Right}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
+  </div>
+  {{else}}
+  <div class="empty">
+    {{template "eye-away" .}}
+    {{if .Query}}
+      <div class="meta muted">No match</div>
+      <h1 class="heading">Nothing matches “{{.Query}}”</h1>
+      <p class="body">Search covers titles and bodies, in every state.</p>
+    {{else if eq .State "open"}}
+      <div class="meta muted">Nothing filed yet</div>
+      <h1 class="heading">Your agents write here</h1>
+      <p class="body">Point an agent at docket and it files what it notices with
+        <span class="code">todo_add</span>, from any repo on any machine.</p>
+      <p><a class="btn btn--primary" href="#add">Add one yourself</a></p>
+    {{else}}
+      <div class="meta muted">Nothing {{.State}}</div>
+      <h1 class="heading">No verdicts yet</h1>
+      <p class="body">Entries you close land here, with the reason you gave.</p>
+    {{end}}
   </div>
   {{end}}
 
-  {{template "scopes" .Scopes}}
-</main>
+  {{if .Quiet}}
+  <div class="quiet-scopes">
+    <span class="ui muted">{{len .Quiet}} scope{{if ne (len .Quiet) 1}}s{{end}} with nothing {{.State}}</span>
+    <span class="names">{{range $i, $n := .Quiet}}{{if $i}} · {{end}}{{$n}}{{end}}</span>
+  </div>
+  {{end}}
+
+  {{template "add-form" .}}
+  {{template "rename-form" .}}
+  {{template "scopes-list" .}}
+</div>
+</div>
+{{with .Open}}{{template "drawer" dict "T" . "S" $}}{{end}}
+</div>
 </body>
 </html>
+
+{{define "panel"}}{{$p := .P}}{{$s := .S}}
+<section class="panel">
+  <header>
+    <a class="name" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.Name}}</a>
+    <span class="counts">{{$p.Counts}}</span>
+    <span class="tools">
+      <a class="btn--quiet" href="{{query "state" $s.State "scope" $p.Scope}}#add">+ in {{$p.Name}}</a>
+      <a class="btn--quiet" href="#rename">Rename</a>
+    </span>
+  </header>
+  {{range $p.Entries}}
+    <a class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}"
+       href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" .ID)}}">
+      <span class="id">{{.ID}}</span>
+      <span>
+        <span class="title">{{.Title}}</span>
+        {{if .Verdict}}<span class="reason">{{.Verdict}}</span>
+        {{else if .Source}}<span class="src">{{.Source}} · via {{.Via}}</span>
+        {{else}}<span class="src">via {{.Via}}</span>{{end}}
+      </span>
+      <span class="age" title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</span>
+    </a>
+  {{end}}
+  {{if $p.More}}
+  <div class="more">
+    <a class="btn--quiet" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.More}} more in {{$p.Name}}</a>
+  </div>
+  {{end}}
+  {{if not $p.Entries}}<div class="clear">All clear.</div>{{end}}
+</section>
+{{end}}
+
+{{define "rename-form"}}
+  <div class="panel-form" id="rename">
+    <h2 class="heading" style="margin: 0 0 var(--space-4)">Rename a scope</h2>
+    <p class="body-sm muted" style="margin: 0 0 var(--space-4)">
+      Renaming to a scope that already exists merges the two.</p>
+    <form method="post" action="/scope/rename">
+      <input type="hidden" name="back_state" value="{{.State}}">
+      <label for="rename-from">From</label>
+      <select id="rename-from" name="from">
+        {{range .Scopes}}<option value="{{.Scope}}">{{if .Scope}}{{.Scope}}{{else}}(unscoped){{end}} — {{.Open}} open</option>{{end}}
+      </select>
+      <label for="rename-to" style="margin-top: var(--space-4)">To</label>
+      <input type="text" id="rename-to" name="to" list="scopes">
+      <p><button type="submit" class="btn btn--secondary">Rename</button></p>
+    </form>
+  </div>
+{{end}}

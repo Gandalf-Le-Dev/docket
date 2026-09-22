@@ -1,0 +1,43 @@
+{{define "drawer"}}{{$t := .T}}{{$s := .S}}
+<aside class="drawer" aria-label="Entry {{$t.ID}}">
+  <header>
+    {{if $t.Scope}}<span class="crumb">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
+    <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page">#{{$t.ID}}</a>
+    <span style="margin-left: auto; display: flex; gap: var(--space-2); align-items: center;">
+      <a class="icon" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
+    </span>
+  </header>
+
+  <div class="body">
+    <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
+    <p class="code-sm muted" style="margin: 0 0 var(--space-5)">
+      filed {{ago $t.CreatedAt}}{{if $t.Via}} · via {{$t.Via}}{{end}}{{if $t.Source}}<br>{{$t.Source}}{{end}}
+    </p>
+    {{if $t.Verdict}}
+      <p class="verdict"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{$t.Verdict}}</p>
+    {{end}}
+    {{if $t.Text}}<div class="text">{{linkify $t.Text}}</div>{{end}}
+  </div>
+
+  <footer>
+    {{if eq $t.State "open"}}
+      <form method="post" action="/todo/close">
+        <input type="hidden" name="id" value="{{$t.ID}}">
+        <input type="hidden" name="outcome" value="done">
+        <input type="hidden" name="back_state" value="{{$s.State}}">
+        <input type="hidden" name="back_scope" value="{{$s.Scope}}">
+        <button type="submit" class="btn btn--primary">Done</button>
+      </form>
+      <a class="btn btn--secondary" href="/todo/{{$t.ID}}#drop">Drop…</a>
+    {{else}}
+      <form method="post" action="/todo/reopen">
+        <input type="hidden" name="id" value="{{$t.ID}}">
+        <input type="hidden" name="back_state" value="{{$s.State}}">
+        <input type="hidden" name="back_scope" value="{{$s.Scope}}">
+        <button type="submit" class="btn btn--secondary">Reopen</button>
+      </form>
+    {{end}}
+    <a class="btn btn--ghost" href="/todo/{{$t.ID}}#edit">Edit</a>
+  </footer>
+</aside>
+{{end}}

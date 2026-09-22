@@ -1,33 +1,87 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>#{{.Item.ID}} {{.Item.Title}} · Docket</title>
-  {{template "style" .}}
+  {{template "head" .}}
+  <title>#{{.Item.ID}} {{.Item.Title}} · docket</title>
 </head>
 <body>
-<main class="focus">
-  <header class="top">
-    <h1><a href="/">Docket</a></h1>
-    <form method="post" action="/logout"><button type="submit" class="link">Sign out</button></form>
+<div class="shell">
+  <header class="hdr">
+    {{template "mark" .}}
+    <a class="wm" href="/">docket</a>
   </header>
+
+  <div class="crumbbar">
+    <a href="/">← all entries</a>
+    {{if .Item.Scope}}<span class="crumb code-sm muted">/</span>
+      <a href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{end}}
+    <span class="url">{{.URL}}</span>
+  </div>
 
   {{template "flash" .}}
   {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
-  <nav class="tabs">
-    <a href="/{{if ne .Item.State "open"}}?state={{.Item.State}}{{end}}">← all items</a>
-  </nav>
+  <div class="sheet">
+    <h1 class="display-m" style="margin: 0 0 var(--space-2)">{{.Item.Title}}</h1>
+    <p class="code-sm muted" style="margin: 0 0 var(--space-5)">
+      #{{.Item.ID}} · filed {{shortTime .Item.CreatedAt}}{{if .Item.Via}} · via {{.Item.Via}}{{end}}{{if .Item.Source}} · {{.Item.Source}}{{end}}{{if .Item.ClosedAt}} · closed {{shortTime .Item.ClosedAt}}{{end}}
+    </p>
 
-  <section class="scope">
-    <h2>{{if .Item.Scope}}<a href="/?state={{.Item.State}}&scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{else}}unscoped{{end}}</h2>
-    {{template "item" .Item}}
-  </section>
+    {{if .Item.Verdict}}
+      <p class="verdict" style="max-width: 62ch"><b>{{if eq .Item.State "done"}}Done.{{else}}Dropped.{{end}}</b> {{.Item.Verdict}}</p>
+    {{end}}
+    {{if .Item.Text}}<div class="text">{{linkify .Item.Text}}</div>{{end}}
 
-  <p class="permalink">Link: <a href="{{.URL}}">{{.URL}}</a></p>
+    <div style="height: var(--space-6)"></div>
+    <div class="acts">
+      {{if eq .Item.State "open"}}
+        <form method="post" action="/todo/close">
+          <input type="hidden" name="id" value="{{.Item.ID}}">
+          <input type="hidden" name="outcome" value="done">
+          <input type="hidden" name="back_id" value="{{.Item.ID}}">
+          <button type="submit" class="btn btn--primary">Done</button>
+        </form>
+      {{else}}
+        <form method="post" action="/todo/reopen">
+          <input type="hidden" name="id" value="{{.Item.ID}}">
+          <input type="hidden" name="back_id" value="{{.Item.ID}}">
+          <button type="submit" class="btn btn--secondary">Reopen</button>
+        </form>
+      {{end}}
+    </div>
 
-  {{template "scopes" .Scopes}}
-</main>
+    {{if eq .Item.State "open"}}
+    <div class="panel-form" id="drop" style="margin: var(--space-6) 0 0; max-width: 62ch">
+      <h2 class="heading" style="margin: 0 0 var(--space-2)">Drop this?</h2>
+      <p class="body-sm muted" style="margin: 0 0 var(--space-4)">
+        Dropped means deliberately not doing it. The entry and its reason stay, in the Dropped tab.</p>
+      <form method="post" action="/todo/close">
+        <input type="hidden" name="id" value="{{.Item.ID}}">
+        <input type="hidden" name="outcome" value="dropped">
+        <input type="hidden" name="back_id" value="{{.Item.ID}}">
+        <label for="why">Why not</label>
+        <input type="text" id="why" name="reason" placeholder="Optional, but future you will want it">
+        <p><button type="submit" class="btn btn--danger">Drop it</button></p>
+      </form>
+    </div>
+    {{end}}
+
+    <div class="panel-form" id="edit" style="margin: var(--space-5) 0 0; max-width: 62ch">
+      <h2 class="heading" style="margin: 0 0 var(--space-4)">Edit</h2>
+      <form method="post" action="/todo/update">
+        <input type="hidden" name="id" value="{{.Item.ID}}">
+        <input type="hidden" name="back_id" value="{{.Item.ID}}">
+        <label for="e-title">Title</label>
+        <input type="text" id="e-title" name="title" value="{{.Item.Title}}">
+        <label for="e-body">Body</label>
+        <textarea id="e-body" name="body">{{.Item.Body}}</textarea>
+        <label for="e-scope">Scope</label>
+        <input type="text" id="e-scope" name="scope" value="{{.Item.Scope}}" list="scopes">
+        <p><button type="submit" class="btn btn--primary">Save</button></p>
+      </form>
+    </div>
+  </div>
+  {{template "scopes-list" .}}
+</div>
 </body>
 </html>

@@ -1,0 +1,79 @@
+{{define "head"}}<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
+<link rel="icon" href="/static/mroc-lens.svg" type="image/svg+xml">{{end}}
+
+{{/* the lens, drawn at its own proportions and never redrawn */}}
+{{define "mark"}}<svg class="mark" width="22" height="22" viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4,24A20,20 0 0 1 24,4L38,4A6,6 0 0 1 44,10L44,24A20,20 0 0 1 24,44L10,44A6,6 0 0 1 4,38Z M15,24A9,9 0 0 1 24,15L31,15A2,2 0 0 1 33,17L33,24A9,9 0 0 1 24,33L17,33A2,2 0 0 1 15,31Z"/></svg>{{end}}
+
+{{/* the eye, looking away: for an empty screen */}}
+{{define "eye-away"}}<svg class="eye" width="56" height="56" viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4,24A20,20 0 0 1 24,4L38,4A6,6 0 0 1 44,10L44,24A20,20 0 0 1 24,44L10,44A6,6 0 0 1 4,38Z M15,24A9,9 0 0 1 24,15L31,15A2,2 0 0 1 33,17L33,24A9,9 0 0 1 24,33L17,33A2,2 0 0 1 15,31Z"/><circle cx="28" cy="26" r="5" fill="currentColor"/></svg>{{end}}
+
+{{define "header"}}
+  <header class="hdr">
+    {{template "mark" .}}
+    <a class="wm" href="/">docket</a>
+    <span class="right">
+      <form method="get" action="/" role="search">
+        {{if ne .State "open"}}<input type="hidden" name="state" value="{{.State}}">{{end}}
+        {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
+        <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
+      </form>
+      <a class="btn btn--primary" href="#add">New entry</a>
+    </span>
+  </header>
+{{end}}
+
+{{define "nav"}}
+  <nav class="nav">
+    <a class="ui{{if eq .State "open"}} on{{end}}" {{if eq .State "open"}}aria-current="page"{{end}}
+       href="{{query "scope" .Scope "q" .Query}}">Open<span class="n">{{index .Counts "open"}}</span></a>
+    <a class="ui{{if eq .State "done"}} on{{end}}" {{if eq .State "done"}}aria-current="page"{{end}}
+       href="{{query "state" "done" "scope" .Scope "q" .Query}}">Done<span class="n">{{index .Counts "done"}}</span></a>
+    <a class="ui{{if eq .State "dropped"}} on{{end}}" {{if eq .State "dropped"}}aria-current="page"{{end}}
+       href="{{query "state" "dropped" "scope" .Scope "q" .Query}}">Dropped<span class="n">{{index .Counts "dropped"}}</span></a>
+  </nav>
+{{end}}
+
+{{define "toolbar"}}
+  {{if or .Scope .Query}}
+  <div class="toolbar">
+    {{if .Scope}}<a class="pill pill--on" href="{{query "state" .State "q" .Query}}">{{.Scope}} ✕</a>{{end}}
+    {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope}}">“{{.Query}}” ✕</a>{{end}}
+    <span class="ui muted">{{.Total}} match{{if ne .Total 1}}es{{end}}</span>
+  </div>
+  {{end}}
+{{end}}
+
+{{define "flash"}}{{with .Flash}}
+  <div class="flash" role="status">
+    <span>{{.Text}}</span>
+    {{if .Undo}}<form method="post" action="{{.Undo}}">
+      <input type="hidden" name="id" value="{{.ID}}">
+      <input type="hidden" name="back_state" value="{{.BackState}}">
+      <input type="hidden" name="back_scope" value="{{.BackScope}}">
+      <button type="submit" class="btn--quiet">Reopen</button>
+    </form>{{end}}
+    {{if .Link}}<a href="{{.Link}}">Open it</a>{{end}}
+  </div>
+{{end}}{{end}}
+
+{{define "add-form"}}
+  <div class="panel-form" id="add">
+    <h2 class="heading" style="margin: 0 0 var(--space-4)">New entry</h2>
+    <form method="post" action="/add">
+      <input type="hidden" name="back_state" value="{{.State}}">
+      <input type="hidden" name="back_scope" value="{{.Scope}}">
+      <label for="add-title">Title</label>
+      <input type="text" id="add-title" name="title" required placeholder="What needs doing">
+      <label for="add-body">Details</label>
+      <textarea id="add-body" name="body" placeholder="Context, links, why it matters"></textarea>
+      <label for="add-scope">Scope</label>
+      <input type="text" id="add-scope" name="scope" list="scopes" value="{{.Scope}}"
+             placeholder="A project name, or personal">
+      <p><button type="submit" class="btn btn--primary">File it</button></p>
+    </form>
+  </div>
+{{end}}
+
+{{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if .Scope}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

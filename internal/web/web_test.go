@@ -1,6 +1,7 @@
 package web
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -166,10 +167,10 @@ func TestItemPage(t *testing.T) {
 		t.Fatalf("item page: %d\n%s", resp.StatusCode, body)
 	}
 	for _, want := range []string{
-		`<details class="todo" open>`,
+		`<h1 class="display-m" style="margin: 0 0 var(--space-2)">linkable</h1>`,
 		`<a href="https://github.com/x/y/pull/7" rel="noopener">https://github.com/x/y/pull/7</a>,`,
 		`(<a href="https://example.com/a" rel="noopener">https://example.com/a</a>).`,
-		`Link: <a href="` + srv.URL + `/todo/1">`,
+		`<span class="url">` + srv.URL + `/todo/1</span>`,
 		`name="back_id" value="1"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -190,13 +191,20 @@ func TestItemPage(t *testing.T) {
 		t.Fatalf("close from item page: %+v", got)
 	}
 
-	// The list links each item to its page.
-	resp, err = c.Get(srv.URL + "/?state=done")
+	// The list opens an entry in the drawer, and the drawer links on to its page.
+	resp, err = c.Get(srv.URL + "/?state=done&open=1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := readAll(t, resp); !strings.Contains(body, `<a class="id" href="/todo/1">#1</a>`) {
-		t.Fatalf("list missing permalink:\n%s", body)
+	body = readAll(t, resp)
+	for _, want := range []string{
+		`href="/?open=1&amp;state=done"`, // the row opens the drawer
+		`<a class="self" href="/todo/1"`, // the drawer opens the page
+		`class="entry on"`,               // the open row is marked
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("drawer list missing %q:\n%s", want, body)
+		}
 	}
 
 	for _, path := range []string{"/todo/999", "/todo/abc"} {
@@ -240,7 +248,7 @@ func TestActionsReportBack(t *testing.T) {
 		t.Fatalf("add flash missing:\n%s", body)
 	}
 	// Scope inputs complete from the scopes in use.
-	if !strings.Contains(body, `<datalist id="scopes"><option value="docket"></datalist>`) {
+	if !strings.Contains(body, `<option value="docket">`) {
 		t.Fatalf("scope datalist missing:\n%s", body)
 	}
 
@@ -282,25 +290,44 @@ func TestActionsReportBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = readAll(t, resp)
-	if !strings.Contains(body, `<p class="verdict"><b>Done:</b> shipped</p>`) ||
-		!strings.Contains(body, `<div class="body">— closed (dropped): not now</div>`) {
+	// The note that matches the current state is the verdict; the earlier drop
+	// note stays in the body as history.
+	if !strings.Contains(body, `<b>Done.</b> shipped`) ||
+		!strings.Contains(body, `— closed (dropped): not now`) {
 		t.Fatalf("verdict rendering:\n%s", body)
 	}
 }
 
 func TestSplitVerdict(t *testing.T) {
-	cases := []struct{ body, text, verdict string }{
-		{"", "", ""},
-		{"plain body", "plain body", ""},
-		{"— closed (done): shipped", "", "shipped"},
-		{"context\n\n— closed (dropped): not now", "context", "not now"},
-		{"mentions — closed (x): inline, not a note", "mentions — closed (x): inline, not a note", ""},
+	cases := []struct{ body, text, outcome, reason string }{
+		{"", "", "", ""},
+		{"plain body", "plain body", "", ""},
+		{"— closed (done): shipped", "", "done", "shipped"},
+		{"context\n\n— closed (dropped): not now", "context", "dropped", "not now"},
+		{"mentions — closed (x): inline, not a note", "mentions — closed (x): inline, not a note", "", ""},
+		// two closes: the last one is the live verdict
+		{"why\n\n— closed (dropped): no\n\n— closed (done): yes", "why\n\n— closed (dropped): no", "done", "yes"},
 	}
 	for _, c := range cases {
-		text, verdict := splitVerdict(c.body)
-		if text != c.text || verdict != c.verdict {
-			t.Errorf("splitVerdict(%q) = %q, %q; want %q, %q", c.body, text, verdict, c.text, c.verdict)
+		text, outcome, reason := splitVerdict(c.body)
+		if text != c.text || outcome != c.outcome || reason != c.reason {
+			t.Errorf("splitVerdict(%q) = %q, %q, %q; want %q, %q, %q",
+				c.body, text, outcome, reason, c.text, c.outcome, c.reason)
 		}
+	}
+}
+
+// A note left by an earlier close must not be shown as the verdict for the
+// state the item is in now.
+func TestVerdictMatchesState(t *testing.T) {
+	body := "why\n\n— closed (dropped): superseded"
+	v := newTodoView(store.Todo{ID: 1, Body: body, State: "done"}, false, "", "")
+	if v.Verdict != "" || v.Text != body {
+		t.Fatalf("stale note surfaced: verdict=%q text=%q", v.Verdict, v.Text)
+	}
+	v = newTodoView(store.Todo{ID: 1, Body: body, State: "dropped"}, false, "", "")
+	if v.Verdict != "superseded" || v.Text != "why" {
+		t.Fatalf("matching note not used: verdict=%q text=%q", v.Verdict, v.Text)
 	}
 }
 
@@ -318,5 +345,36 @@ func TestAgo(t *testing.T) {
 		if got := ago(in); got != want {
 			t.Errorf("ago(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+// A scope's panel caps on the home page, but not once you have filtered to
+// that scope — there the "more" link would lead back to the same page.
+func TestPanelCapOnlyOnHome(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	for i := 0; i < panelCap+3; i++ {
+		if _, _, err := s.AddTodo(fmt.Sprintf("entry %d", i), "", "pilot", "test", "t"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	resp, err := c.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, "3 more in pilot") {
+		t.Fatalf("home did not cap the panel:\n%s", body)
+	}
+	resp, err = c.Get(srv.URL + "/?scope=pilot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	if strings.Contains(body, "more in pilot") {
+		t.Fatalf("filtered view still capped:\n%s", body)
+	}
+	if n := strings.Count(body, `class="entry"`); n != panelCap+3 {
+		t.Fatalf("filtered view showed %d of %d entries", n, panelCap+3)
 	}
 }

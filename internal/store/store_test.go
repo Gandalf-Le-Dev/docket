@@ -207,3 +207,41 @@ func TestTokens(t *testing.T) {
 		t.Fatal("old plaintext survived rotation")
 	}
 }
+
+func TestScopeSummaries(t *testing.T) {
+	s := testStore(t)
+	for _, tc := range []struct{ title, scope, state string }{
+		{"a", "docket", "open"}, {"b", "docket", "done"}, {"c", "docket", "dropped"},
+		{"d", "thael", "open"}, {"e", "thael", "open"},
+		{"f", "", "open"},
+		{"g", "pilot", "done"},
+	} {
+		id, _, err := s.AddTodo(tc.title, "", tc.scope, "test", "t")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if tc.state != "open" {
+			if _, err := s.CloseTodo(id, tc.state, ""); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	got, err := s.ScopeSummaries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []ScopeStats{
+		{"", 1, 0, 0},
+		{"docket", 1, 1, 1},
+		{"pilot", 0, 1, 0}, // all closed, still listed
+		{"thael", 2, 0, 0},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %+v", got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("row %d: got %+v want %+v", i, got[i], want[i])
+		}
+	}
+}

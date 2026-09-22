@@ -1,0 +1,259 @@
+/* docket, in the mroc design system.
+   Tokens are copied from mroc-design-system/tokens/tokens.css — change them
+   there and re-copy, never edit a value here on its own.
+   Monochrome by default: `attention` appears at most once per view. */
+
+@font-face {
+  font-family: "Archivo";
+  src: url("/static/fonts/Archivo-Variable.woff2") format("woff2");
+  font-weight: 100 900; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/IBMPlexMono-400.woff2") format("woff2");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+@font-face {
+  font-family: "IBM Plex Mono";
+  src: url("/static/fonts/IBMPlexMono-500.woff2") format("woff2");
+  font-weight: 500; font-style: normal; font-display: swap;
+}
+
+:root,
+[data-theme="paper"] {
+  --surface: #e3e8ed; --surface-raised: #f4f9ff; --surface-sunken: #d0d5da;
+  --border: #a5adb8; --border-strong: #6d747b;
+  --ink: #14171d; --ink-muted: #51565b; --ink-subtle: #62676d; --ink-inverse: #f4f9ff;
+  --attention: #5c2a6e; --attention-quiet: #ece2f2; --on-attention: #f4f9ff;
+  --focus-ring: #5c2a6e; --success: #0a6349; --danger: #ab1e29; --on-danger: #f4f9ff;
+  --shadow-overlay: 0 10px 28px rgba(20,23,29,0.18);
+}
+[data-theme="ink"] {
+  --surface: #0e1012; --surface-raised: #1e2125; --surface-sunken: #060707;
+  --border: #474d56; --border-strong: #666f7d;
+  --ink: #e9eef7; --ink-muted: #9eabc1; --ink-subtle: #828c9f; --ink-inverse: #14171d;
+  --attention: #c68ada; --attention-quiet: #352a44; --on-attention: #16101c;
+  --focus-ring: #c68ada; --success: #3fd6a6; --danger: #ff7a80; --on-danger: #14171d;
+  --shadow-overlay: 0 10px 28px rgba(0,0,0,0.55);
+}
+/* Both themes are peers; with no attribute set, follow the OS. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="paper"]) {
+    --surface: #0e1012; --surface-raised: #1e2125; --surface-sunken: #060707;
+    --border: #474d56; --border-strong: #666f7d;
+    --ink: #e9eef7; --ink-muted: #9eabc1; --ink-subtle: #828c9f; --ink-inverse: #14171d;
+    --attention: #c68ada; --attention-quiet: #352a44; --on-attention: #16101c;
+    --focus-ring: #c68ada; --success: #3fd6a6; --danger: #ff7a80; --on-danger: #14171d;
+    --shadow-overlay: 0 10px 28px rgba(0,0,0,0.55);
+  }
+}
+
+html {
+  --font-sans: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px; --space-8: 64px;
+  --radius-sm: 4px; --radius-md: 6px; --radius-lg: 10px;
+  --hairline: 1px; --control-height: 36px; --control-height-sm: 28px;
+  --page-max: 1120px;
+  font-family: var(--font-sans);
+  background: var(--surface);
+  color: var(--ink);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: var(--ink); }
+:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* --- type styles, from tokens.json --- */
+.display-m { font-size: 32px; line-height: 36px; font-weight: 600; letter-spacing: -0.02em; }
+.heading   { font-size: 21px; line-height: 28px; font-weight: 600; letter-spacing: -0.012em; }
+.body      { font-size: 15px; line-height: 24px; font-weight: 400; }
+.body-sm   { font-size: 13px; line-height: 20px; font-weight: 400; }
+.label     { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.01em; }
+.code      { font-family: var(--font-mono); font-size: 13px; line-height: 22px; }
+.code-sm   { font-family: var(--font-mono); font-size: 12px; line-height: 20px; font-weight: 500; }
+.meta      { font-family: var(--font-mono); font-size: 11px; line-height: 16px; font-weight: 500;
+             letter-spacing: 0.08em; text-transform: uppercase; }
+/* Interface text is 500, not the 400 of running prose — it is chrome, not copy. */
+.ui        { font-size: 13px; line-height: 20px; font-weight: 500; letter-spacing: 0.01em; }
+.muted { color: var(--ink-muted); }
+
+/* --- controls --- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2);
+  font-family: var(--font-sans); font-size: 14px; font-weight: 500; letter-spacing: 0.01em;
+  height: var(--control-height); padding: 0 var(--space-4);
+  border: var(--hairline) solid transparent; border-radius: var(--radius-md);
+  cursor: pointer; white-space: nowrap; text-decoration: none;
+  transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.btn--sm { height: var(--control-height-sm); padding: 0 var(--space-3); font-size: 12px; }
+/* Primary actions are ink-filled. `attention` is for the one action a screen is
+   built around, and no screen here has one. */
+.btn--primary { background: var(--ink); color: var(--ink-inverse); }
+.btn--secondary { background: var(--surface-raised); color: var(--ink); border-color: var(--border-strong); }
+.btn--ghost { background: transparent; color: var(--ink); }
+.btn--danger { background: var(--danger); color: var(--on-danger); }
+.btn--quiet {
+  height: var(--control-height-sm); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: transparent; color: var(--ink-muted); font-family: var(--font-sans);
+  font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px;
+  text-decoration: none;
+}
+.btn--quiet:hover { background: var(--surface-sunken); color: var(--ink); }
+.icon { width: 28px; height: 28px; border-radius: var(--radius-sm); border: 0; background: transparent;
+  color: var(--ink-muted); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0; text-decoration: none; }
+.icon:hover { background: var(--surface-sunken); color: var(--ink); }
+input[type="text"], input[type="search"], input[type="password"], textarea, select {
+  font-family: var(--font-sans); font-size: 15px; line-height: 22px; color: var(--ink);
+  height: var(--control-height); padding: 0 var(--space-3); background: var(--surface-raised);
+  border: var(--hairline) solid var(--border-strong); border-radius: var(--radius-md);
+}
+textarea { height: auto; min-height: 88px; padding: var(--space-2) var(--space-3); resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--ink-subtle); }
+label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-muted); margin: 0 0 var(--space-2); }
+.tag {
+  display: inline-flex; align-items: center; height: 20px; padding: 0 6px;
+  border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 10px; font-weight: 500;
+  letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap;
+  background: var(--surface-sunken); color: var(--ink-muted);
+  border: var(--hairline) solid var(--border);
+}
+
+/* --- page chrome --- */
+.shell { max-width: var(--page-max); margin: 0 auto; }
+.hdr { display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4); background: var(--surface-raised); }
+.wm { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;
+  color: var(--ink); text-decoration: none; }
+.mark { display: block; color: var(--ink); }
+.hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
+.hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
+.summary { padding: 0 var(--space-5) var(--space-4); background: var(--surface-raised); }
+.nav { display: flex; gap: var(--space-5); padding: 0 var(--space-5);
+  border-bottom: var(--hairline) solid var(--border); background: var(--surface-raised); }
+.nav a { text-decoration: none; color: var(--ink-muted); padding-bottom: var(--space-3);
+  margin-bottom: -1px; border-bottom: 2px solid transparent; }
+.nav a.on { color: var(--ink); border-bottom-color: var(--ink); }
+.nav .n { font-family: var(--font-mono); font-size: 11px; font-weight: 500; margin-left: 6px; color: var(--ink-muted); }
+.toolbar { display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-5); background: var(--surface-raised);
+  border-bottom: var(--hairline) solid var(--border); flex-wrap: wrap; }
+.pill { display: inline-flex; align-items: center; gap: 6px; height: var(--control-height-sm);
+  padding: 0 var(--space-3); border-radius: var(--radius-md);
+  border: var(--hairline) solid var(--border); background: var(--surface-raised);
+  font-size: 12px; font-weight: 500; color: var(--ink-muted); text-decoration: none; }
+.pill--on { border-color: var(--ink); color: var(--ink); padding-right: var(--space-2); }
+.flash { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
+  margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
+  background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 14px; }
+.flash form { display: inline; }
+.error { margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
+  border: var(--hairline) solid var(--danger); color: var(--danger);
+  border-radius: var(--radius-md); font-size: 14px; }
+
+/* --- panels: one per scope, packed into two columns by the server --- */
+.cols { display: flex; align-items: flex-start; gap: var(--space-5); padding: var(--space-5); }
+.col { flex: 1; min-width: 0; }
+.panel { background: var(--surface-raised); border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5); }
+.panel:last-child { margin-bottom: 0; }
+.panel > header { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); }
+.panel > header .name { font-size: 21px; line-height: 28px; font-weight: 600;
+  letter-spacing: -0.012em; color: var(--ink); text-decoration: none; }
+.panel > header .name:hover { text-decoration: underline; text-underline-offset: 3px; }
+.panel > header .counts { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+.panel > header .tools { margin-left: auto; display: flex; gap: var(--space-1); opacity: 0;
+  transition: opacity 120ms ease-out; }
+.panel:hover > header .tools, .panel:focus-within > header .tools { opacity: 1; }
+.entry { display: grid; grid-template-columns: 30px 1fr auto; column-gap: var(--space-3);
+  align-items: baseline; padding: var(--space-2) 0; text-decoration: none; color: var(--ink); }
+.entry .id { font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  color: var(--ink-subtle); text-align: right; }
+.entry .title { display: block; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
+.entry .src { display: block; font-family: var(--font-mono); font-size: 11px; line-height: 16px;
+  font-weight: 500; color: var(--ink-muted); margin-top: 3px; word-break: break-word; }
+.entry .reason { display: block; font-size: 13px; line-height: 20px; color: var(--ink-muted); margin-top: 3px; }
+.entry .age { font-family: var(--font-mono); font-size: 11px; font-weight: 500;
+  color: var(--ink-muted); white-space: nowrap; }
+.entry .done-btn { display: none; }
+.entry:hover .age, .entry:focus-within .age { display: none; }
+.entry:hover .done-btn, .entry:focus-within .done-btn { display: inline-flex; }
+/* attention-quiet is the token's own case: a selected item */
+.entry.on { background: var(--attention-quiet); border-radius: var(--radius-sm);
+  margin: 0 calc(var(--space-3) * -1); padding: var(--space-2) var(--space-3); }
+.panel .more { margin-top: var(--space-3); display: flex; }
+.panel .clear { padding: var(--space-3) 0 var(--space-2); color: var(--ink-subtle);
+  font-size: 13px; font-weight: 500; }
+.quiet-scopes { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: 0 var(--space-5) var(--space-6); }
+.quiet-scopes .names { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+
+/* --- drawer: a floating layer, so it gets the overlay shadow --- */
+.with-drawer { display: flex; align-items: flex-start; }
+.with-drawer > .main { flex: 1; min-width: 0; }
+/* pinned to the viewport, not to the list's height, so its actions stay in
+   reach however long the list is */
+.drawer { width: 420px; flex: none; position: sticky; top: 0; align-self: flex-start;
+  height: 100vh; background: var(--surface-raised);
+  border-left: var(--hairline) solid var(--border); box-shadow: var(--shadow-overlay);
+  display: flex; flex-direction: column; }
+.drawer > header { display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-4) var(--space-5); border-bottom: var(--hairline) solid var(--border); }
+.drawer .crumb { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
+/* links are ink with a 2px underline — a page of violet links has no emphasis left */
+.drawer .self { color: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 500;
+  text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.drawer .body { padding: var(--space-5); flex: 1; overflow-y: auto; }
+.drawer .body .text { font-size: 14px; line-height: 22px; color: var(--ink);
+  white-space: pre-wrap; word-break: break-word; }
+.drawer footer { padding: var(--space-4) var(--space-5);
+  border-top: var(--hairline) solid var(--border); display: flex; gap: var(--space-2); align-items: center; }
+.drawer .verdict { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
+  background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 14px; line-height: 21px; }
+.kbd { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--ink-subtle);
+  border: var(--hairline) solid var(--border); border-radius: var(--radius-sm); padding: 1px 5px; }
+
+/* --- the entry on its own page --- */
+.crumbbar { display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-4) var(--space-5); background: var(--surface-raised);
+  border-bottom: var(--hairline) solid var(--border); }
+.crumbbar a { color: var(--ink-muted); text-decoration: none; font-size: 13px; font-weight: 500; }
+.crumbbar .url { margin-left: auto; font-family: var(--font-mono); font-size: 12px;
+  font-weight: 500; color: var(--ink-muted); word-break: break-all; }
+.sheet { background: var(--surface-raised); padding: var(--space-6) var(--space-7); min-height: 60vh; }
+.sheet .text { font-size: 15px; line-height: 24px; color: var(--ink); max-width: 62ch;
+  white-space: pre-wrap; word-break: break-word; }
+.acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+
+/* --- forms and empty states --- */
+.panel-form { background: var(--surface-raised); border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-4) var(--space-5) var(--space-5);
+  margin: var(--space-5); }
+.panel-form input[type="text"], .panel-form textarea { width: 100%; margin-bottom: var(--space-4); }
+.empty { display: flex; flex-direction: column; align-items: center; text-align: center;
+  gap: var(--space-3); padding: var(--space-8) var(--space-5); }
+.empty .eye { color: var(--border-strong); }
+.empty p { margin: 0; max-width: 46ch; color: var(--ink-muted); }
+.login { max-width: 420px; margin: 0 auto; padding: var(--space-8) var(--space-5); }
+.login input { width: 100%; margin-bottom: var(--space-4); }
+
+@media (max-width: 860px) {
+  .cols { flex-direction: column; padding: var(--space-4); gap: 0; }
+  .col { width: 100%; }
+  .col:empty { display: none; }
+  .panel { margin-bottom: var(--space-4); }
+  .with-drawer { flex-direction: column; }
+  /* stacked, the drawer comes first: tapping an entry must not send you to
+     the bottom of the page to read it */
+  .drawer { order: -1; width: 100%; height: auto; position: static; border-left: 0;
+    border-bottom: var(--hairline) solid var(--border); box-shadow: none; }
+  .drawer .body { overflow: visible; }
+  .hdr input[type="search"] { width: 140px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn, .panel > header .tools { transition-duration: 1ms; }
+}
