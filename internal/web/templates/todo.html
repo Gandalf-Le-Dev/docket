@@ -81,8 +81,8 @@
       <dt>Scope</dt><dd>{{if .Item.Scope}}<a class="{{template "tint" (index $.Hues .Item.Scope)}}" href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{else}}unscoped{{end}}</dd>
       <dt>Filed</dt><dd>{{shortTime .Item.CreatedAt}}</dd>
       {{if .Item.ClosedAt}}<dt>Closed</dt><dd>{{shortTime .Item.ClosedAt}}</dd>{{end}}
-      {{if .Item.Via}}<dt>Via</dt><dd>{{.Item.Via}}</dd>{{end}}
-      {{if .Item.Source}}<dt>Source</dt><dd>{{.Item.Source}}</dd>{{end}}
+      {{if .Item.Via}}<dt>By</dt><dd>{{.Item.Via}}</dd>{{end}}
+      {{if .Item.Source}}<dt>From</dt><dd>{{.Item.Source}}</dd>{{end}}
     </dl>
   </article>
 </div>

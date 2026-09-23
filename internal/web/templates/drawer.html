@@ -27,9 +27,11 @@
   {{else}}
   <div class="body">
     <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
-    <p class="code-sm muted" style="margin: 0 0 var(--space-5)">
-      filed {{ago $t.CreatedAt}}{{if $t.Via}} · via {{$t.Via}}{{end}}{{if $t.Source}}<br>{{$t.Source}}{{end}}
-    </p>
+    <dl class="facts">
+      <dt>Filed</dt><dd title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</dd>
+      {{if $t.Via}}<dt>By</dt><dd>{{$t.Via}}</dd>{{end}}
+      {{if $t.Source}}<dt>From</dt><dd>{{$t.Source}}</dd>{{end}}
+    </dl>
     {{if $t.Verdict}}
       <p class="verdict"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{$t.Verdict}}</p>
     {{end}}

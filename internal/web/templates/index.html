@@ -78,8 +78,8 @@
       <span>
         <span class="title">{{.Title}}</span>
         {{if .Verdict}}<span class="reason">{{.Verdict}}</span>
-        {{else if .Source}}<span class="src">{{.Source}} · via {{.Via}}</span>
-        {{else}}<span class="src">via {{.Via}}</span>{{end}}
+        {{else if .Source}}<span class="src">from {{.Source}} · by {{.Via}}</span>
+        {{else}}<span class="src">by {{.Via}}</span>{{end}}
       </span>
       <span class="age" title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</span>
     </a>

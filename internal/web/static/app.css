@@ -294,6 +294,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 20px; font-weight: 500;
   color: var(--ink); word-break: break-word; }
 .facts a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.drawer .facts { margin: 0 0 var(--space-5); padding: 0; border: 0; gap: var(--space-1) var(--space-4); }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 
 /* --- forms and empty states --- */

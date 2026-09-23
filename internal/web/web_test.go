@@ -170,7 +170,7 @@ func TestItemPage(t *testing.T) {
 		`<h1 class="display-m">linkable</h1>`,
 		`<a href="https://github.com/x/y/pull/7" rel="noopener">https://github.com/x/y/pull/7</a>,`,
 		`(<a href="https://example.com/a" rel="noopener">https://example.com/a</a>).`,
-		`<dt>Source</dt><dd>test</dd>`,
+		`<dt>From</dt><dd>test</dd>`, // the source, labeled
 		`name="back_id" value="1"`,
 	} {
 		if !strings.Contains(body, want) {
