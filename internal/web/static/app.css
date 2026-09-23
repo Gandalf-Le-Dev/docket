@@ -123,9 +123,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 }
 
 /* --- page chrome ---
-   A band bleeds to the window's edge while its content stays within page-max,
-   so a wide window reads as a page rather than a slab with the sides cut off. */
-.shell { max-width: var(--page-max); margin: 0 auto; }
+   Everything runs the window's full width; the gutter is the only margin. */
 .band { background: var(--surface-raised); }
 .hdr { display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-5) var(--space-5) var(--space-4); }
@@ -134,19 +132,18 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .mark { display: block; color: var(--ink); }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
-.summary { padding: 0 var(--space-5) var(--space-4); }
-.nav { display: flex; gap: var(--space-5); padding: 0 var(--space-5);
+/* fixed height: filters sit in the tab row and must never make it grow */
+.nav { display: flex; align-items: stretch; gap: var(--space-5); height: 40px; padding: 0 var(--space-5);
   border-bottom: var(--hairline) solid var(--border); }
-.nav a { text-decoration: none; color: var(--ink-muted); padding-bottom: var(--space-3);
+.nav > a { display: flex; align-items: center; text-decoration: none; color: var(--ink-muted);
   margin-bottom: -1px; border-bottom: 2px solid transparent; }
-.nav a.on { color: var(--ink); border-bottom-color: var(--ink); }
+.nav > a.on { color: var(--ink); border-bottom-color: var(--ink); }
 .nav .n { font-family: var(--font-mono); font-size: 11px; font-weight: 500; margin-left: 6px; color: var(--ink-muted); }
-.toolbar { display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-3) var(--space-5); flex-wrap: wrap; }
+.nav .filters { margin-left: auto; display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .pill { display: inline-flex; align-items: center; gap: 6px; height: var(--control-height-sm);
   padding: 0 var(--space-3); border-radius: var(--radius-md);
   border: var(--hairline) solid var(--border); background: var(--surface-raised);
-  font-size: 12px; font-weight: 500; color: var(--ink-muted); text-decoration: none; }
+  font-size: 12px; font-weight: 500; color: var(--ink-muted); text-decoration: none; white-space: nowrap; }
 .pill--on { border-color: var(--ink); color: var(--ink); padding-right: var(--space-2); }
 .flash { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
   margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
@@ -163,7 +160,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border-radius: var(--radius-md); padding: var(--space-4) var(--space-5);
   margin-bottom: var(--space-5); }
 .panel:last-child { margin-bottom: 0; }
-.panel > header { display: flex; align-items: baseline; gap: var(--space-3); margin-bottom: var(--space-2); }
+.panel > header { display: flex; align-items: center; gap: var(--space-3); height: 28px;
+  margin-bottom: var(--space-2); }
 .panel > header .name { font-size: 21px; line-height: 28px; font-weight: 600;
   letter-spacing: -0.012em; color: var(--ink); text-decoration: none; }
 .panel > header .name:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -171,8 +169,20 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .panel > header .tools { margin-left: auto; display: flex; gap: var(--space-1); opacity: 0;
   transition: opacity 120ms ease-out; }
 .panel:hover > header .tools, .panel:focus-within > header .tools { opacity: 1; }
+/* the name turns into its own input, at its own size and place */
+.rename { display: flex; align-items: center; gap: var(--space-2); flex: 1; min-width: 0; }
+.rename .name-input { flex: 1; min-width: 0; max-width: 360px; height: 28px; margin-left: -9px; padding: 0 8px;
+  font-size: 21px; line-height: 28px; font-weight: 600; letter-spacing: -0.012em; }
+/* The highlight's box is there before the pointer is: rows are always inset
+   to it, so hovering paints a color and moves nothing. */
 .entry { display: grid; grid-template-columns: 30px 1fr auto; column-gap: var(--space-3);
-  align-items: baseline; padding: var(--space-2) 0; text-decoration: none; color: var(--ink); }
+  align-items: baseline; margin: 0 calc(var(--space-3) * -1); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm); text-decoration: none; color: var(--ink);
+  transition: background-color 120ms ease-out; }
+.entry:hover { background: var(--attention-quiet); }
+/* attention-quiet is the token's own case, a selected item; the open one also
+   carries the view's single use of attention */
+.entry.on { background: var(--attention-quiet); box-shadow: inset 2px 0 0 var(--attention); }
 .entry .id { font-family: var(--font-mono); font-size: 12px; font-weight: 500;
   color: var(--ink-subtle); text-align: right; }
 .entry .title { display: block; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
@@ -181,12 +191,6 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .entry .reason { display: block; font-size: 13px; line-height: 20px; color: var(--ink-muted); margin-top: 3px; }
 .entry .age { font-family: var(--font-mono); font-size: 11px; font-weight: 500;
   color: var(--ink-muted); white-space: nowrap; }
-.entry .done-btn { display: none; }
-.entry:hover .age, .entry:focus-within .age { display: none; }
-.entry:hover .done-btn, .entry:focus-within .done-btn { display: inline-flex; }
-/* attention-quiet is the token's own case: a selected item */
-.entry.on { background: var(--attention-quiet); border-radius: var(--radius-sm);
-  margin: 0 calc(var(--space-3) * -1); padding: var(--space-2) var(--space-3); }
 .panel .more { margin-top: var(--space-3); display: flex; }
 .panel .clear { padding: var(--space-3) 0 var(--space-2); color: var(--ink-subtle);
   font-size: 13px; font-weight: 500; }
@@ -199,12 +203,13 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .with-drawer > .main { flex: 1; min-width: 0; }
 /* pinned to the viewport, not to the list's height, so its actions stay in
    reach however long the list is */
-.drawer { width: 420px; flex: none; position: sticky; top: 0; align-self: flex-start;
+.drawer { width: 440px; flex: none; position: sticky; top: 0; align-self: flex-start;
   height: 100vh; background: var(--surface-raised);
   border-left: var(--hairline) solid var(--border); box-shadow: var(--shadow-overlay);
   display: flex; flex-direction: column; }
-.drawer > header { display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-4) var(--space-5); border-bottom: var(--hairline) solid var(--border); }
+.drawer > header { display: flex; align-items: center; gap: var(--space-2); height: 56px; flex: none;
+  padding: 0 var(--space-4) 0 var(--space-5); border-bottom: var(--hairline) solid var(--border); }
+.drawer > header .close { margin-left: auto; }
 .drawer .crumb { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 /* links are ink with a 2px underline — a page of violet links has no emphasis left */
 .drawer .self { color: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 500;
@@ -212,32 +217,41 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .drawer .body { padding: var(--space-5); flex: 1; overflow-y: auto; }
 .drawer .body .text { font-size: 14px; line-height: 22px; color: var(--ink);
   white-space: pre-wrap; word-break: break-word; }
-.drawer footer { padding: var(--space-4) var(--space-5);
-  border-top: var(--hairline) solid var(--border); display: flex; gap: var(--space-2); align-items: center; }
+.drawer footer { display: flex; gap: var(--space-2); align-items: center; flex: none;
+  padding: var(--space-4) var(--space-5); border-top: var(--hairline) solid var(--border); }
 .drawer .verdict { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
   background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 14px; line-height: 21px; }
-.kbd { font-family: var(--font-mono); font-size: 11px; font-weight: 500; color: var(--ink-subtle);
-  border: var(--hairline) solid var(--border); border-radius: var(--radius-sm); padding: 1px 5px; }
+.drop { display: flex; gap: var(--space-2); align-items: center; flex: 1; min-width: 0; }
+.drop input[type="text"] { flex: 1; min-width: 0; }
 
-/* --- the entry on its own page --- */
-.crumbbar { display: flex; align-items: center; gap: var(--space-2);
-  padding: var(--space-4) var(--space-5);
-  border-bottom: var(--hairline) solid var(--border); }
-.crumbbar a { color: var(--ink-muted); text-decoration: none; font-size: 13px; font-weight: 500; }
-.crumbbar .url { margin-left: auto; font-family: var(--font-mono); font-size: 12px;
-  font-weight: 500; color: var(--ink-muted); word-break: break-all; }
-/* a document column, not a slab: content-max plus its padding */
-.sheet { background: var(--surface-raised); padding: var(--space-6) var(--space-7);
-  max-width: 776px; border-radius: 0 0 var(--radius-md) var(--radius-md); }
-.sheet .text { font-size: 15px; line-height: 24px; color: var(--ink); max-width: 62ch;
+/* --- the entry on its own page: the text, and a column of facts beside it --- */
+.page { padding: var(--space-4) var(--space-5) var(--space-7); }
+.crumbs { display: flex; align-items: center; gap: var(--space-2); height: 28px; margin-bottom: var(--space-4); }
+.crumbs a { color: var(--ink-muted); text-decoration: none; }
+.crumbs a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.crumbs .sep { color: var(--ink-subtle); }
+.crumbs .here { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+.doc { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--space-7);
+  background: var(--surface-raised); border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-md); padding: var(--space-6); }
+.doc h1 { margin: 0 0 var(--space-5); max-width: 36ch; }
+.doc .text { font-size: 15px; line-height: 24px; color: var(--ink); max-width: 72ch;
   white-space: pre-wrap; word-break: break-word; }
+.doc .verdict { margin: 0 0 var(--space-5); padding: var(--space-3) var(--space-4); max-width: 72ch;
+  background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 15px; line-height: 24px; }
+.doc .acts { margin-top: var(--space-6); }
+.doc .form { max-width: 72ch; }
+.doc .form .acts { margin-top: var(--space-2); }
+.facts { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: var(--space-3) var(--space-4);
+  align-content: start; padding-left: var(--space-5); border-left: var(--hairline) solid var(--border); }
+.facts dt { font-size: 12px; line-height: 20px; font-weight: 500; color: var(--ink-muted); }
+.facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 20px; font-weight: 500;
+  color: var(--ink); word-break: break-word; }
+.facts a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 
 /* --- forms and empty states --- */
-.panel-form { background: var(--surface-raised); border: var(--hairline) solid var(--border);
-  border-radius: var(--radius-md); padding: var(--space-4) var(--space-5) var(--space-5);
-  margin: var(--space-5); }
-.panel-form input[type="text"], .panel-form textarea { width: 100%; margin-bottom: var(--space-4); }
+.form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center;
   gap: var(--space-3); padding: var(--space-8) var(--space-5); }
 .empty .eye { color: var(--border-strong); }
@@ -257,7 +271,10 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
     border-bottom: var(--hairline) solid var(--border); box-shadow: none; }
   .drawer .body { overflow: visible; }
   .hdr input[type="search"] { width: 140px; }
+  .doc { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
+  .facts { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline) solid var(--border); }
+  .nav .filters .ui { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .btn, .panel > header .tools { transition-duration: 1ms; }
+  .btn, .entry, .panel > header .tools { transition-duration: 1ms; }
 }

@@ -29,7 +29,7 @@ func newEnv(t *testing.T) (*httptest.Server, *store.Store, string, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := httptest.NewServer(NewHandler(s, ""))
+	srv := httptest.NewServer(NewHandler(s))
 	t.Cleanup(srv.Close)
 	return srv, s, review, publish
 }
@@ -167,10 +167,10 @@ func TestItemPage(t *testing.T) {
 		t.Fatalf("item page: %d\n%s", resp.StatusCode, body)
 	}
 	for _, want := range []string{
-		`<h1 class="display-m" style="margin: 0 0 var(--space-2)">linkable</h1>`,
+		`<h1 class="display-m">linkable</h1>`,
 		`<a href="https://github.com/x/y/pull/7" rel="noopener">https://github.com/x/y/pull/7</a>,`,
 		`(<a href="https://example.com/a" rel="noopener">https://example.com/a</a>).`,
-		`<span class="url">` + srv.URL + `/todo/1</span>`,
+		`<dt>Source</dt><dd>test</dd>`,
 		`name="back_id" value="1"`,
 	} {
 		if !strings.Contains(body, want) {
@@ -244,8 +244,9 @@ func TestActionsReportBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := readAll(t, resp)
-	if !strings.Contains(body, "Filed #1.") || !strings.Contains(body, `<a href="/todo/1">Open it</a>`) {
-		t.Fatalf("add flash missing:\n%s", body)
+	// Filing lands with what was filed open in the drawer that held the form.
+	if !strings.Contains(body, "Filed #1.") || !strings.Contains(body, `aria-label="Entry 1"`) {
+		t.Fatalf("add flash or drawer missing:\n%s", body)
 	}
 	// Scope inputs complete from the scopes in use.
 	if !strings.Contains(body, `<option value="docket">`) {
@@ -376,5 +377,67 @@ func TestPanelCapOnlyOnHome(t *testing.T) {
 	}
 	if n := strings.Count(body, `class="entry"`); n != panelCap+3 {
 		t.Fatalf("filtered view showed %d of %d entries", n, panelCap+3)
+	}
+}
+
+// Every form opens in place, from a URL: the new entry in the drawer, an
+// entry's edit and drop in the drawer or on its page, a scope's rename in its
+// panel's header.
+func TestFormsOpenInPlace(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("first", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	get := func(path string) string {
+		t.Helper()
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	for path, wants := range map[string][]string{
+		"/?new=1&in=pilot": {`aria-label="New entry"`, `action="/add"`, `name="scope" list="scopes" value="pilot"`},
+		"/?open=1&do=edit": {`id="drawer-edit"`, `name="back_open" value="1"`, `form="drawer-edit"`},
+		"/?open=1&do=drop": {`name="outcome" value="dropped"`, `placeholder="Why not? Kept in the Dropped tab"`},
+		"/todo/1?do=edit":  {`action="/todo/update"`, `id="e-title" name="title" value="first"`},
+		"/todo/1?do=drop":  {`name="outcome" value="dropped"`, `name="back_id" value="1"`},
+		"/?rename=pilot":   {`action="/scope/rename"`, `name="from" value="pilot"`, `class="name-input"`},
+	} {
+		body := get(path)
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing %q:\n%s", path, want, body)
+			}
+		}
+	}
+	// The entry page carries the list's header and tabs, not a lesser one.
+	if body := get("/todo/1"); !strings.Contains(body, `class="nav"`) || !strings.Contains(body, `role="search"`) {
+		t.Fatalf("entry page lacks the list's chrome:\n%s", body)
+	}
+
+	// Saving from the drawer keeps the entry open there.
+	resp, err := c.PostForm(srv.URL+"/todo/update", url.Values{
+		"id": {"1"}, "title": {"first, edited"}, "scope": {"pilot"}, "back_open": {"1"}, "back_do": {"edit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	if resp.Request.URL.Query().Get("open") != "1" || resp.Request.URL.Query().Get("do") != "" ||
+		!strings.Contains(body, "Saved #1.") {
+		t.Fatalf("drawer save landed on %s", resp.Request.URL)
+	}
+
+	// Renaming the scope the list is filtered to follows it to the new name.
+	resp, err = c.PostForm(srv.URL+"/scope/rename", url.Values{"from": {"pilot"}, "to": {"Fleet"}, "back_scope": {"pilot"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if resp.Request.URL.Query().Get("scope") != "fleet" || !strings.Contains(body, "first, edited") {
+		t.Fatalf("rename landed on %s:\n%s", resp.Request.URL, body)
 	}
 }

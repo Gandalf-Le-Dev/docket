@@ -185,7 +185,7 @@ config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
 `scope` is a freeform grouping label ("hopbox", "personal", "idea") — lowercased,
 never a fixed list. It is the web page's organising idea: each scope gets a panel,
 and a scope is a filter rather than a place, so clicking its name narrows the page
-to it. When names drift apart, the page has a rename that merges them.
+to it. When names drift apart, rename one into the other on the page and they merge.
 
 Every item in a result carries `url` — its own page on the web UI, `/todo/{id}` —
 the link to hand to a person or paste into a commit message; `todo_add` returns it
@@ -202,10 +202,15 @@ hole. A busy scope shows its first five entries and offers the rest behind a lin
 and scopes with nothing in the state you are looking at fold into one line at the
 foot.
 
-Clicking an entry opens it in a drawer beside the list — that is a link to
-`/?open=<id>`, so it is a normal page load, the back button works, and the URL can
-be pasted to someone. The `#<id>` in the drawer's header opens the entry's own page
-at `/todo/<id>`, which is where editing and dropping live.
+Clicking an entry opens it in a drawer beside the list. The drawer is a link to
+`/?open=<id>`, so it is a normal page load, the back button works, and you can
+paste the URL to someone. The `#<id>` in the drawer's header opens the entry's own
+page at `/todo/<id>`, with the same header and tabs as the list.
+
+Every form opens in place, from a URL like the drawer. New entry puts its form in
+the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer or
+on its page (`do=edit`, `do=drop`). Rename turns a panel's name into an input
+(`/?rename=<scope>`). Renaming to a scope that exists merges the two.
 
 The look is the [mroc design system](https://github.com/Gandalf-Le-Dev/mroc-design-system):
 `internal/web/static/app.css` holds its tokens and `internal/web/static/fonts/` its

@@ -1,7 +1,9 @@
 // Package web is Docket's human surface: one server-rendered page for
-// reviewing the backlog. Plain forms, no build step, no JS — opening an entry
-// is a link to ?open=<id>, so the drawer is server-rendered like everything
-// else and its URL can be shared.
+// reviewing the backlog. Plain forms, no build step, no JS. Every transient
+// state is a query parameter the server renders: ?open=<id> puts an entry in
+// the drawer, ?new=1 puts the new-entry form there, ?do=edit|drop turns an
+// entry into its form in place, ?rename=<scope> does the same to a panel's
+// name. Each of those is a normal page load, so back works and URLs share.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
@@ -41,18 +43,16 @@ const panelCap = 5
 const cookieName = "docket_session"
 
 type Handler struct {
-	store     *store.Store
-	publicURL string // see link.Base
-	assetVer  string // content hash, so a deploy busts the year-long cache
-	tmpl      *template.Template
-	mux       *http.ServeMux
+	store    *store.Store
+	assetVer string // content hash, so a deploy busts the year-long cache
+	tmpl     *template.Template
+	mux      *http.ServeMux
 }
 
-func NewHandler(s *store.Store, publicURL string) *Handler {
+func NewHandler(s *store.Store) *Handler {
 	h := &Handler{
-		store:     s,
-		publicURL: publicURL,
-		assetVer:  hashAsset("static/app.css"),
+		store:    s,
+		assetVer: hashAsset("static/app.css"),
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
 			"ago":       ago,
@@ -227,6 +227,20 @@ func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// chrome is what every signed-in page carries for its header and tabs, so
+// moving between the list and an entry never changes the band's shape.
+type chrome struct {
+	State  string // the list the header's search and links stay in
+	Tab    string // the tab drawn as current
+	Scope  string
+	Query  string
+	Counts map[string]int // per state, for the tabs
+	Scopes []store.ScopeStats
+	Flash  *flash
+	Error  string
+	Asset  string // stylesheet fingerprint
+}
+
 type loginData struct {
 	State string // unused, but "head" and the chrome share one shape
 	Error string
@@ -295,7 +309,6 @@ type flash struct {
 	Text      string
 	ID        int64
 	Undo      string // form action that reverses it, or ""
-	Link      string // an item to open, or ""
 	BackID    int64
 	BackState string
 	BackScope string
@@ -315,7 +328,6 @@ func flashFrom(q url.Values, backID int64, backState, backScope string) *flash {
 	case "reopened":
 		f.Text = fmt.Sprintf("Reopened #%d.", id)
 	case "added":
-		f.Link = fmt.Sprintf("/todo/%d", id)
 		if q.Get("duplicate") == "true" {
 			f.Text = fmt.Sprintf("Already open as #%d.", id)
 		} else {
@@ -371,20 +383,16 @@ func (p panelView) Name() string {
 }
 
 type indexData struct {
-	State  string
-	Scope  string
-	Query  string
+	chrome
 	Left   []panelView
 	Right  []panelView
 	Quiet  []string // scopes with nothing in this state
 	Total  int
-	Counts map[string]int // per state, for the tabs
-	Scopes []store.ScopeStats
 	Open   *todoView // the drawer's entry, when ?open= named one
-	URL    string    // that entry's own url
-	Flash  *flash
-	Error  string
-	Asset  string // stylesheet fingerprint
+	Do     string    // "edit" or "drop": the drawer's entry as that form
+	New    bool      // the drawer holds the new-entry form
+	In     string    // the scope that form starts in
+	Rename string    // the panel whose name is an input, by Name()
 }
 
 // pack lays the panels into two columns the way a mason would: tallest first,
@@ -480,37 +488,53 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	left, right := pack(panels)
 
 	data := indexData{
-		State:  state,
-		Scope:  scope,
-		Query:  search,
+		chrome: chrome{
+			State:  state,
+			Tab:    state,
+			Scope:  scope,
+			Query:  search,
+			Counts: counts,
+			Scopes: summaries,
+			Flash:  flashFrom(q, 0, state, scope),
+			Error:  q.Get("err"),
+			Asset:  h.assetVer,
+		},
 		Left:   left,
 		Right:  right,
 		Quiet:  quiet,
 		Total:  len(todos),
-		Counts: counts,
-		Scopes: summaries,
-		Flash:  flashFrom(q, 0, state, scope),
-		Error:  q.Get("err"),
+		Rename: q.Get("rename"),
 	}
-	if id, err := strconv.ParseInt(q.Get("open"), 10, 64); err == nil && id > 0 {
+	if q.Get("new") != "" {
+		data.New = true
+		data.In = scope
+		if in, ok := q["in"]; ok {
+			data.In = store.NormalizeScope(in[0])
+		}
+	} else if id, err := strconv.ParseInt(q.Get("open"), 10, 64); err == nil && id > 0 {
 		if t, err := h.store.GetTodo(id); err == nil {
 			v := newTodoView(t, true, state, scope)
 			data.Open = &v
-			data.URL = link.Item(link.Base(r, h.publicURL), t.ID)
+			data.Do = mode(q.Get("do"), t.State)
 		}
 	}
-	data.Asset = h.assetVer
 	h.render(w, "index.html", data)
 }
 
 type itemData struct {
-	Item   todoView
-	URL    string
-	Scopes []store.ScopeStats
-	State  string
-	Flash  *flash
-	Error  string
-	Asset  string // stylesheet fingerprint
+	chrome
+	Item todoView
+	Do   string // "edit" or "drop": the entry as that form, in place
+}
+
+// mode is the form an entry is showing. Drop only means something while the
+// entry is open; a closed one offers Reopen instead.
+func mode(do, state string) string {
+	switch {
+	case do == "edit", do == "drop" && state == "open":
+		return do
+	}
+	return ""
 }
 
 // item is an item's own page — the target of its url — with the same
@@ -535,20 +559,32 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	counts, err := h.store.StateCounts()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	q := r.URL.Query()
 	h.render(w, "todo.html", itemData{
-		Asset:  h.assetVer,
-		Item:   newTodoView(t, true, "", ""),
-		URL:    link.Item(link.Base(r, h.publicURL), t.ID),
-		Scopes: scopes,
-		State:  t.State,
-		Flash:  flashFrom(r.URL.Query(), t.ID, "", ""),
-		Error:  r.URL.Query().Get("err"),
+		chrome: chrome{
+			State:  "open",
+			Tab:    t.State,
+			Counts: counts,
+			Scopes: scopes,
+			Flash:  flashFrom(q, t.ID, "", ""),
+			Error:  q.Get("err"),
+			Asset:  h.assetVer,
+		},
+		Item: newTodoView(t, true, "", ""),
+		Do:   mode(q.Get("do"), t.State),
 	})
 }
 
 // back redirects to where the action came from — the item's own page when
-// back_id is set, otherwise the list view — carrying either what was done
-// (see flashFrom) or the store's validation message, so the page can say so.
+// back_id is set, otherwise the list view, with back_open's entry in the
+// drawer — carrying either what was done (see flashFrom) or the store's
+// validation message, so the page can say so. A failed form comes back
+// still open (back_do, back_new), so the message lands beside it.
 func back(w http.ResponseWriter, r *http.Request, err error, did url.Values) {
 	q := url.Values{}
 	if err == nil {
@@ -558,13 +594,19 @@ func back(w http.ResponseWriter, r *http.Request, err error, did url.Values) {
 	if id, e := strconv.ParseInt(r.FormValue("back_id"), 10, 64); e == nil {
 		dest = fmt.Sprintf("/todo/%d", id)
 	}
-	if s := r.FormValue("back_state"); s != "" && s != "open" {
-		q.Set("state", s)
-	}
-	if s := r.FormValue("back_scope"); s != "" {
-		q.Set("scope", s)
+	for _, k := range []string{"state", "scope", "q", "open"} {
+		if s := r.FormValue("back_" + k); s != "" && !(k == "state" && s == "open") && q.Get(k) == "" {
+			q.Set(k, s)
+		}
 	}
 	if err != nil {
+		if s := r.FormValue("back_do"); s != "" {
+			q.Set("do", s)
+		}
+		if r.FormValue("back_new") != "" {
+			q.Set("new", "1")
+			q.Set("in", r.FormValue("scope"))
+		}
 		var ve store.ValidationError
 		switch {
 		case errors.As(err, &ve):
@@ -595,7 +637,8 @@ func (h *Handler) add(w http.ResponseWriter, r *http.Request) {
 	c, _ := r.Cookie(cookieName)
 	via, _, _ := h.store.Auth(c.Value)
 	id, dup, err := h.store.AddTodo(r.FormValue("title"), r.FormValue("body"), r.FormValue("scope"), "web", via)
-	back(w, r, err, did("added", id, "duplicate", strconv.FormatBool(dup)))
+	// the drawer that held the form now holds what it filed
+	back(w, r, err, did("added", id, "duplicate", strconv.FormatBool(dup), "open", strconv.FormatInt(id, 10)))
 }
 
 func (h *Handler) close(w http.ResponseWriter, r *http.Request) {
@@ -628,7 +671,12 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {
-	_, err := h.store.RenameScope(r.FormValue("from"), r.FormValue("to"))
+	from, to := r.FormValue("from"), r.FormValue("to")
+	_, err := h.store.RenameScope(from, to)
+	// A list filtered to the old name would come back empty.
+	if err == nil && store.NormalizeScope(r.FormValue("back_scope")) == store.NormalizeScope(from) {
+		r.Form.Set("back_scope", store.NormalizeScope(to))
+	}
 	back(w, r, err, did("renamed", 0))
 }
 

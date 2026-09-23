@@ -1,13 +1,30 @@
 {{define "drawer"}}{{$t := .T}}{{$s := .S}}
+{{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
 <aside class="drawer" aria-label="Entry {{$t.ID}}">
   <header>
     {{if $t.Scope}}<span class="crumb">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
     <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page">#{{$t.ID}}</a>
-    <span style="margin-left: auto; display: flex; gap: var(--space-2); align-items: center;">
-      <a class="icon" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
-    </span>
+    <a class="icon close" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
   </header>
 
+  {{if eq $s.Do "edit"}}
+  <form id="drawer-edit" class="body form" method="post" action="/todo/update">
+    <input type="hidden" name="id" value="{{$t.ID}}">
+    {{template "back" $s}}
+    <input type="hidden" name="back_open" value="{{$t.ID}}">
+    <input type="hidden" name="back_do" value="edit">
+    <label for="d-title">Title</label>
+    <input type="text" id="d-title" name="title" value="{{$t.Title}}" required autofocus>
+    <label for="d-body">Body</label>
+    <textarea id="d-body" name="body" rows="12">{{$t.Body}}</textarea>
+    <label for="d-scope">Scope</label>
+    <input type="text" id="d-scope" name="scope" value="{{$t.Scope}}" list="scopes">
+  </form>
+  <footer>
+    <button type="submit" form="drawer-edit" class="btn btn--primary">Save</button>
+    <a class="btn btn--ghost" href="{{$here}}">Cancel</a>
+  </footer>
+  {{else}}
   <div class="body">
     <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
     <p class="code-sm muted" style="margin: 0 0 var(--space-5)">
@@ -20,24 +37,58 @@
   </div>
 
   <footer>
-    {{if eq $t.State "open"}}
+    {{if eq $s.Do "drop"}}
+      <form class="drop" method="post" action="/todo/close">
+        <input type="hidden" name="id" value="{{$t.ID}}">
+        <input type="hidden" name="outcome" value="dropped">
+        {{template "back" $s}}
+        <input type="text" name="reason" aria-label="Why not" autofocus
+               placeholder="Why not? Kept in the Dropped tab">
+        <button type="submit" class="btn btn--danger">Drop it</button>
+      </form>
+      <a class="btn btn--ghost" href="{{$here}}">Cancel</a>
+    {{else if eq $t.State "open"}}
       <form method="post" action="/todo/close">
         <input type="hidden" name="id" value="{{$t.ID}}">
         <input type="hidden" name="outcome" value="done">
-        <input type="hidden" name="back_state" value="{{$s.State}}">
-        <input type="hidden" name="back_scope" value="{{$s.Scope}}">
+        {{template "back" $s}}
         <button type="submit" class="btn btn--primary">Done</button>
       </form>
-      <a class="btn btn--secondary" href="/todo/{{$t.ID}}#drop">Drop…</a>
+      <a class="btn btn--secondary" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "drop"}}">Drop…</a>
+      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
     {{else}}
       <form method="post" action="/todo/reopen">
         <input type="hidden" name="id" value="{{$t.ID}}">
-        <input type="hidden" name="back_state" value="{{$s.State}}">
-        <input type="hidden" name="back_scope" value="{{$s.Scope}}">
+        {{template "back" $s}}
         <button type="submit" class="btn btn--secondary">Reopen</button>
       </form>
+      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
     {{end}}
-    <a class="btn btn--ghost" href="/todo/{{$t.ID}}#edit">Edit</a>
+  </footer>
+  {{end}}
+</aside>
+{{end}}
+
+{{define "new-drawer"}}
+<aside class="drawer" aria-label="New entry">
+  <header>
+    <span class="ui">New entry</span>
+    <a class="icon close" href="{{query "state" .State "scope" .Scope "q" .Query}}" aria-label="Close">✕</a>
+  </header>
+  <form id="drawer-new" class="body form" method="post" action="/add">
+    {{template "back" .}}
+    <input type="hidden" name="back_new" value="1">
+    <label for="n-title">Title</label>
+    <input type="text" id="n-title" name="title" required autofocus placeholder="What needs doing">
+    <label for="n-body">Details</label>
+    <textarea id="n-body" name="body" rows="8" placeholder="Context, links, why it matters"></textarea>
+    <label for="n-scope">Scope</label>
+    <input type="text" id="n-scope" name="scope" list="scopes" value="{{.In}}"
+           placeholder="A project name, or personal">
+  </form>
+  <footer>
+    <button type="submit" form="drawer-new" class="btn btn--primary">File it</button>
+    <a class="btn btn--ghost" href="{{query "state" .State "scope" .Scope "q" .Query}}">Cancel</a>
   </footer>
 </aside>
 {{end}}

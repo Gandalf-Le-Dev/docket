@@ -96,7 +96,7 @@ func serve(args []string) {
 		}
 		fmt.Fprintln(w, "ok")
 	})
-	mux.Handle("/", web.NewHandler(s, *publicURL))
+	mux.Handle("/", web.NewHandler(s))
 
 	log.Printf("docket %s listening on %s (db %s)", version, *addr, *db)
 	if err := http.ListenAndServe(*addr, mux); err != nil {

@@ -8,61 +8,48 @@
 <div class="with-drawer">
 <div class="main">
 <div class="band">
-  <div class="shell">
-    {{template "header" .}}
-    <div class="summary ui muted">
-      {{if eq .State "open"}}
-        {{if .Total}}{{.Total}} open across {{.PanelCount}} scope{{if ne .PanelCount 1}}s{{end}}
-        {{else}}nothing open{{end}}
-      {{else}}{{.Total}} {{.State}}{{end}}
-    </div>
-    {{template "nav" .}}
-    {{template "toolbar" .}}
-  </div>
+  {{template "header" .}}
+  {{template "nav" .}}
 </div>
-<div class="shell">
-  {{template "flash" .}}
-  {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+{{template "flash" .}}
+{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
-  {{if or .Left .Right}}
-  <div class="cols">
-    <div class="col">{{range .Left}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
-    <div class="col">{{range .Right}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
-  </div>
+{{if or .Left .Right}}
+<div class="cols">
+  <div class="col">{{range .Left}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
+  <div class="col">{{range .Right}}{{template "panel" dict "P" . "S" $}}{{end}}</div>
+</div>
+{{else}}
+<div class="empty">
+  {{template "eye-away" .}}
+  {{if .Query}}
+    <div class="meta muted">No match</div>
+    <h1 class="heading">Nothing matches “{{.Query}}”</h1>
+    <p class="body">Search covers titles and bodies, in every state.</p>
+  {{else if eq .State "open"}}
+    <div class="meta muted">Nothing filed yet</div>
+    <h1 class="heading">Your agents write here</h1>
+    <p class="body">Point an agent at docket and it files what it notices with
+      <span class="code">todo_add</span>, from any repo on any machine.</p>
+    <p><a class="btn btn--primary" href="{{query "scope" .Scope "new" "1"}}">Add one yourself</a></p>
   {{else}}
-  <div class="empty">
-    {{template "eye-away" .}}
-    {{if .Query}}
-      <div class="meta muted">No match</div>
-      <h1 class="heading">Nothing matches “{{.Query}}”</h1>
-      <p class="body">Search covers titles and bodies, in every state.</p>
-    {{else if eq .State "open"}}
-      <div class="meta muted">Nothing filed yet</div>
-      <h1 class="heading">Your agents write here</h1>
-      <p class="body">Point an agent at docket and it files what it notices with
-        <span class="code">todo_add</span>, from any repo on any machine.</p>
-      <p><a class="btn btn--primary" href="#add">Add one yourself</a></p>
-    {{else}}
-      <div class="meta muted">Nothing {{.State}}</div>
-      <h1 class="heading">No verdicts yet</h1>
-      <p class="body">Entries you close land here, with the reason you gave.</p>
-    {{end}}
-  </div>
+    <div class="meta muted">Nothing {{.State}}</div>
+    <h1 class="heading">No verdicts yet</h1>
+    <p class="body">Entries you close land here, with the reason you gave.</p>
   {{end}}
-
-  {{if .Quiet}}
-  <div class="quiet-scopes">
-    <span class="ui muted">{{len .Quiet}} scope{{if ne (len .Quiet) 1}}s{{end}} with nothing {{.State}}</span>
-    <span class="names">{{range $i, $n := .Quiet}}{{if $i}} · {{end}}{{$n}}{{end}}</span>
-  </div>
-  {{end}}
-
-  {{template "add-form" .}}
-  {{template "rename-form" .}}
-  {{template "scopes-list" .}}
 </div>
+{{end}}
+
+{{if .Quiet}}
+<div class="quiet-scopes">
+  <span class="ui muted">{{len .Quiet}} scope{{if ne (len .Quiet) 1}}s{{end}} with nothing {{.State}}</span>
+  <span class="names">{{range $i, $n := .Quiet}}{{if $i}} · {{end}}{{$n}}{{end}}</span>
 </div>
-{{with .Open}}{{template "drawer" dict "T" . "S" $}}{{end}}
+{{end}}
+{{template "scopes-list" .}}
+</div>
+{{if .New}}{{template "new-drawer" .}}
+{{else}}{{with .Open}}{{template "drawer" dict "T" . "S" $}}{{end}}{{end}}
 </div>
 </body>
 </html>
@@ -70,12 +57,24 @@
 {{define "panel"}}{{$p := .P}}{{$s := .S}}
 <section class="panel">
   <header>
+    {{if eq $s.Rename $p.Name}}
+    <form class="rename" method="post" action="/scope/rename">
+      {{template "back" $s}}
+      <input type="hidden" name="from" value="{{$p.Scope}}">
+      <input class="name-input" type="text" name="to" value="{{$p.Scope}}" list="scopes" required
+             placeholder="scope" aria-label="New name for {{$p.Name}}" autofocus
+             title="Renaming to a scope that exists merges the two">
+      <button type="submit" class="btn btn--primary btn--sm">Rename</button>
+      <a class="btn btn--ghost btn--sm" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}">Cancel</a>
+    </form>
+    {{else}}
     <a class="name" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.Name}}</a>
     <span class="counts">{{$p.Counts}}</span>
     <span class="tools">
-      <a class="btn--quiet" href="{{query "state" $s.State "scope" $p.Scope}}#add">+ in {{$p.Name}}</a>
-      <a class="btn--quiet" href="#rename">Rename</a>
+      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "new" "1" "in" $p.Scope}}">+ in {{$p.Name}}</a>
+      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "rename" $p.Name}}">Rename</a>
     </span>
+    {{end}}
   </header>
   {{range $p.Entries}}
     <a class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}"
@@ -97,22 +96,4 @@
   {{end}}
   {{if not $p.Entries}}<div class="clear">All clear.</div>{{end}}
 </section>
-{{end}}
-
-{{define "rename-form"}}
-  <div class="panel-form" id="rename">
-    <h2 class="heading" style="margin: 0 0 var(--space-4)">Rename a scope</h2>
-    <p class="body-sm muted" style="margin: 0 0 var(--space-4)">
-      Renaming to a scope that already exists merges the two.</p>
-    <form method="post" action="/scope/rename">
-      <input type="hidden" name="back_state" value="{{.State}}">
-      <label for="rename-from">From</label>
-      <select id="rename-from" name="from">
-        {{range .Scopes}}<option value="{{.Scope}}">{{if .Scope}}{{.Scope}}{{else}}(unscoped){{end}} — {{.Open}} open</option>{{end}}
-      </select>
-      <label for="rename-to" style="margin-top: var(--space-4)">To</label>
-      <input type="text" id="rename-to" name="to" list="scopes">
-      <p><button type="submit" class="btn btn--secondary">Rename</button></p>
-    </form>
-  </div>
 {{end}}

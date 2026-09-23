@@ -6,15 +6,12 @@
 </head>
 <body>
 <div class="band">
-  <div class="shell">
-    <header class="hdr">
-      {{template "mark" .}}
-      <span class="wm">docket</span>
-    </header>
-  </div>
+  <header class="hdr">
+    {{template "mark" .}}
+    <span class="wm">docket</span>
+  </header>
 </div>
-<div class="shell">
-  <div class="login">
+<div class="login">
     {{if .Error}}<div class="error" style="margin: 0 0 var(--space-5)">{{.Error}}</div>{{end}}
     <h1 class="heading" style="margin: 0 0 var(--space-2)">Sign in</h1>
     <p class="body muted" style="margin: 0 0 var(--space-5)">
@@ -24,7 +21,6 @@
       <input type="password" id="token" name="token" autocomplete="current-password" autofocus>
       <p><button type="submit" class="btn btn--primary">Sign in</button></p>
     </form>
-  </div>
 </div>
 </body>
 </html>
