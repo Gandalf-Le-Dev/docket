@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -153,6 +154,17 @@ func scopeHues(sums []store.ScopeStats) map[string]string {
 	return m
 }
 
+// winks schedules the wordmark's three winks for one page load, as the CSS
+// custom properties the animation reads. The server rolls them so the page
+// needs no script, and every page load rolls again, so they never fall into
+// a rhythm.
+func winks() template.CSS {
+	w1 := 8 + rand.Float64()*32
+	w2 := w1 + 30 + rand.Float64()*90
+	w3 := w2 + 60 + rand.Float64()*180
+	return template.CSS(fmt.Sprintf("--w1: %.1fs; --w2: %.1fs; --w3: %.1fs", w1, w2, w3))
+}
+
 func shortTime(rfc3339 string) string {
 	t, err := time.Parse(time.RFC3339, rfc3339)
 	if err != nil {
@@ -269,16 +281,18 @@ type chrome struct {
 	Compact bool
 	Theme   string            // data-theme, or "" to follow the OS
 	Hues    map[string]string // scope to color class
+	Wink    template.CSS      // when the wordmark winks, see winks
 }
 
 type loginData struct {
 	Error string
 	Asset string // stylesheet fingerprint
 	Theme string
+	Wink  template.CSS
 }
 
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login.html", loginData{Asset: h.assetVer, Theme: cookie(r, themeCookie), Error: r.URL.Query().Get("err")})
+	h.render(w, "login.html", loginData{Asset: h.assetVer, Theme: cookie(r, themeCookie), Wink: winks(), Error: r.URL.Query().Get("err")})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -511,6 +525,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			List:    true,
 			Compact: cookie(r, densityCookie) == "compact",
 			Theme:   cookie(r, themeCookie),
+			Wink:    winks(),
 		},
 		Left:   left,
 		Right:  right,
@@ -589,6 +604,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Asset:  h.assetVer,
 			Here:   r.URL.RequestURI(),
 			Theme:  cookie(r, themeCookie),
+			Wink:   winks(),
 		},
 		Item: newTodoView(t, true, "", ""),
 		Do:   mode(q.Get("do"), t.State),

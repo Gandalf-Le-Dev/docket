@@ -524,3 +524,16 @@ func TestViewSwitches(t *testing.T) {
 		}
 	}
 }
+
+// Each page load rolls three winks, in order, the first within 8 to 40 seconds.
+func TestWinks(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		var w1, w2, w3 float64
+		if _, err := fmt.Sscanf(string(winks()), "--w1: %fs; --w2: %fs; --w3: %fs", &w1, &w2, &w3); err != nil {
+			t.Fatalf("winks() = %q: %v", winks(), err)
+		}
+		if w1 < 8 || w1 > 40 || w2 < w1+30 || w3 < w2+60 {
+			t.Fatalf("winks out of range: %v %v %v", w1, w2, w3)
+		}
+	}
+}

@@ -134,7 +134,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 /* --- page chrome ---
    Everything runs the window's full width; the gutter is the only margin. */
 .band { background: var(--surface-raised); }
-.hdr { --lockup: 36px; display: flex; align-items: center; gap: var(--space-3);
+.hdr { --lockup: 46px; display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-5) var(--space-5) var(--space-4); }
 .wm { font-size: var(--lockup); font-weight: 600; letter-spacing: -0.03em; line-height: 1;
   color: var(--ink); text-decoration: none; }
@@ -142,6 +142,17 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
    the x-height; the drop puts the glyph's foot, not its box's, on the baseline. */
 .wm .o { display: inline-block; width: 0.66em; height: 0.66em; margin: 0 0.02em;
   vertical-align: calc(-0.66em * 4 / 48); color: var(--attention); }
+/* The opening is painted in the band's color rather than cut out, so it can
+   shut: a wink squeezes it to a slit and back, at the times the server rolled.
+   No fill mode: a waiting wink that held its first frame would mask the others. */
+.wm .o .lid { fill: var(--surface-raised); transform-box: fill-box; transform-origin: center;
+  animation: wink 340ms ease-in-out var(--w1, 9999s),
+             wink 340ms ease-in-out var(--w2, 9999s),
+             wink 340ms ease-in-out var(--w3, 9999s); }
+@keyframes wink {
+  0%, 100% { transform: scaleY(1); }
+  40%, 55% { transform: scaleY(0.08); }
+}
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
 /* fixed height: filters sit in the tab row and must never make it grow */
@@ -319,7 +330,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   .drawer { order: -1; width: 100%; height: auto; position: static; border-left: 0;
     border-bottom: var(--hairline) solid var(--border); box-shadow: none; }
   .drawer .body { overflow: visible; }
-  .hdr { --lockup: 28px; }
+  .hdr { --lockup: 32px; }
   .hdr input[type="search"] { width: 140px; }
   .doc { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
   .facts { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline) solid var(--border); }
@@ -327,4 +338,5 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 }
 @media (prefers-reduced-motion: reduce) {
   .btn, .entry, .panel > header .tools { transition-duration: 1ms; }
+  .wm .o .lid { animation: none; }
 }

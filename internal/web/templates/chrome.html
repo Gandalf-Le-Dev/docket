@@ -3,15 +3,16 @@
 <link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
 <link rel="icon" href="/static/mroc-lens.svg" type="image/svg+xml">{{end}}
 
-{{/* the lens stands in for the o, on the baseline at the x-height */}}
-{{define "wordmark"}}d<svg class="o" viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4,24A20,20 0 0 1 24,4L38,4A6,6 0 0 1 44,10L44,24A20,20 0 0 1 24,44L10,44A6,6 0 0 1 4,38Z M15,24A9,9 0 0 1 24,15L31,15A2,2 0 0 1 33,17L33,24A9,9 0 0 1 24,33L17,33A2,2 0 0 1 15,31Z"/></svg>cket{{end}}
+{{/* the lens stands in for the o, on the baseline at the x-height; its
+     opening is drawn separately so it can close for a wink */}}
+{{define "wordmark"}}d<svg class="o" viewBox="0 0 48 48" aria-hidden="true" style="{{.}}"><path fill="currentColor" d="M4,24A20,20 0 0 1 24,4L38,4A6,6 0 0 1 44,10L44,24A20,20 0 0 1 24,44L10,44A6,6 0 0 1 4,38Z"/><path class="lid" d="M15,24A9,9 0 0 1 24,15L31,15A2,2 0 0 1 33,17L33,24A9,9 0 0 1 24,33L17,33A2,2 0 0 1 15,31Z"/></svg>cket{{end}}
 
 {{/* the eye, looking away: for an empty screen */}}
 {{define "eye-away"}}<svg class="eye" width="56" height="56" viewBox="0 0 48 48" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M4,24A20,20 0 0 1 24,4L38,4A6,6 0 0 1 44,10L44,24A20,20 0 0 1 24,44L10,44A6,6 0 0 1 4,38Z M15,24A9,9 0 0 1 24,15L31,15A2,2 0 0 1 33,17L33,24A9,9 0 0 1 24,33L17,33A2,2 0 0 1 15,31Z"/><circle cx="28" cy="26" r="5" fill="currentColor"/></svg>{{end}}
 
 {{define "header"}}
   <header class="hdr">
-    <a class="wm" href="/" aria-label="docket">{{template "wordmark"}}</a>
+    <a class="wm" href="/" aria-label="docket">{{template "wordmark" .Wink}}</a>
     <span class="right">
       <form method="get" action="/" role="search">
         {{if and .State (ne .State "open")}}<input type="hidden" name="state" value="{{.State}}">{{end}}
