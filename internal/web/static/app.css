@@ -134,16 +134,14 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 /* --- page chrome ---
    Everything runs the window's full width; the gutter is the only margin. */
 .band { background: var(--surface-raised); }
-/* --lockup sizes the wordmark; the mark and the gap are drawn from it at
-   fixed proportions (mark 0.92, gap 12/26), so resizing never skews them */
 .hdr { --lockup: 36px; display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-5) var(--space-5) var(--space-4); }
-.hdr > .mark { width: calc(var(--lockup) * 0.92); height: auto; aspect-ratio: 1;
-  margin-right: calc(var(--lockup) * 12 / 26 - var(--space-3)); }
 .wm { font-size: var(--lockup); font-weight: 600; letter-spacing: -0.03em; line-height: 1;
   color: var(--ink); text-decoration: none; }
-.wm .o { color: var(--attention); }
-.mark { display: block; color: var(--ink); }
+/* The glyph fills 40 of its 48 units, so a box of 0.66em draws it at about
+   the x-height; the drop puts the glyph's foot, not its box's, on the baseline. */
+.wm .o { display: inline-block; width: 0.66em; height: 0.66em; margin: 0 0.02em;
+  vertical-align: calc(-0.66em * 4 / 48); color: var(--attention); }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
 /* fixed height: filters sit in the tab row and must never make it grow */
