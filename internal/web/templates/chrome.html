@@ -51,7 +51,7 @@
     <span class="end">
       {{if or .Scope .Query}}
       <span class="filters">
-        {{if .Scope}}<a class="pill pill--on" href="{{query "state" .State "q" .Query}}">{{template "dot" (index .Hues .Scope)}}{{.Scope}} ✕</a>{{end}}
+        {{if .Scope}}<a class="pill pill--on{{template "tint" (index .Hues .Scope)}}" href="{{query "state" .State "q" .Query}}">{{.Scope}} ✕</a>{{end}}
         {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope}}">“{{.Query}}” ✕</a>{{end}}
         <span class="ui muted">{{.Total}} match{{if ne .Total 1}}es{{end}}</span>
       </span>
@@ -86,8 +86,8 @@
   <input type="hidden" name="back_q" value="{{.Query}}">
 {{end}}
 
-{{/* a scope's color, from its name; unscoped work has none */}}
-{{define "dot"}}{{with .}}<span class="dot {{.}}" aria-hidden="true"></span>{{end}}{{end}}
+{{/* the classes that put a scope's color behind its name; unscoped has none */}}
+{{define "tint"}}{{with .}} tint {{.}}{{end}}{{end}}
 
 {{/* a scope with nothing open does not exist, so it is not suggested */}}
 {{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

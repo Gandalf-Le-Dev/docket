@@ -15,7 +15,7 @@
 <div class="page">
   <div class="crumbs ui">
     <a href="/">All entries</a>
-    {{if .Item.Scope}}<span class="sep">/</span>{{template "dot" (index $.Hues .Item.Scope)}}<a href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{end}}
+    {{if .Item.Scope}}<span class="sep">/</span><a class="{{template "tint" (index $.Hues .Item.Scope)}}" href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{end}}
     <span class="sep">/</span><span class="here">#{{.Item.ID}}</span>
   </div>
 
@@ -78,7 +78,7 @@
 
     <dl class="facts">
       <dt>State</dt><dd>{{.Item.State}}</dd>
-      <dt>Scope</dt><dd>{{if .Item.Scope}}{{template "dot" (index $.Hues .Item.Scope)}}<a href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{else}}unscoped{{end}}</dd>
+      <dt>Scope</dt><dd>{{if .Item.Scope}}<a class="{{template "tint" (index $.Hues .Item.Scope)}}" href="/?scope={{.Item.Scope}}">{{.Item.Scope}}</a>{{else}}unscoped{{end}}</dd>
       <dt>Filed</dt><dd>{{shortTime .Item.CreatedAt}}</dd>
       {{if .Item.ClosedAt}}<dt>Closed</dt><dd>{{shortTime .Item.ClosedAt}}</dd>{{end}}
       {{if .Item.Via}}<dt>Via</dt><dd>{{.Item.Via}}</dd>{{end}}

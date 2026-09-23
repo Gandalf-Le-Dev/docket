@@ -503,14 +503,14 @@ func TestViewSwitches(t *testing.T) {
 
 	resp, body := post("/density", "compact", "/?scope=pilot")
 	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `<body class="compact">`) ||
-		!strings.Contains(body, `<span class="dot hue-0" aria-hidden="true"></span>`) {
+		!strings.Contains(body, `<a class="name tint hue-0"`) {
 		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
 	}
 	resp, body = post("/theme", "ink", "/todo/1")
 	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="ink">`) {
 		t.Fatalf("theme landed on %s:\n%s", resp.Request.URL, body)
 	}
-	if !strings.Contains(body, `class="dot hue-`) {
+	if !strings.Contains(body, `class=" tint hue-`) {
 		t.Fatalf("entry page lacks its scope color:\n%s", body)
 	}
 	_, body = post("/theme", "auto", "/")

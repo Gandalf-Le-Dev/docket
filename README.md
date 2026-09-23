@@ -213,9 +213,9 @@ the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer
 on its page (`do=edit`, `do=drop`). Rename turns a panel's name into an input
 (`/?rename=<scope>`). Renaming to a scope that exists merges the two.
 
-Each scope has a color, shown as a dot beside its name wherever the name
-appears. Colors follow the order in which scopes came into use, so the first eight
-scopes never share one. A switch in the tab row turns on compact rows, with one line
+Each scope has a color, shown behind its name wherever the name appears. Colors
+follow the order in which scopes came into use, so the first eight scopes never
+share one. A switch in the tab row turns on compact rows, with one line
 per entry. A switch in the header sets the theme: follow the system, light, or dark.
 Both choices are kept in a cookie on the device.
 

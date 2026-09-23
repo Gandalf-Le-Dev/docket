@@ -52,7 +52,6 @@
 {{define "panel"}}{{$p := .P}}{{$s := .S}}
 <section class="panel">
   <header>
-    {{template "dot" (index $s.Hues $p.Scope)}}
     {{if eq $s.Rename $p.Name}}
     <form class="rename" method="post" action="/scope/rename">
       {{template "back" $s}}
@@ -64,7 +63,7 @@
       <a class="btn btn--ghost btn--sm" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}">Cancel</a>
     </form>
     {{else}}
-    <a class="name" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.Name}}</a>
+    <a class="name{{template "tint" (index $s.Hues $p.Scope)}}" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.Name}}</a>
     <span class="counts">{{$p.Counts}}</span>
     <span class="tools">
       <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "new" "1" "in" $p.Scope}}">+ in {{$p.Name}}</a>
