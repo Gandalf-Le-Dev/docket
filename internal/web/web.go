@@ -36,10 +36,6 @@ var templateFS embed.FS
 //go:embed static
 var staticFS embed.FS
 
-// panelCap is how many open entries a scope shows before it offers the rest
-// behind a link. One loud project must not push every other scope off screen.
-const panelCap = 5
-
 const cookieName = "docket_session"
 
 // View preferences live in cookies per browser and never reach the store.
@@ -377,15 +373,13 @@ func flashFrom(q url.Values, backID int64, backState, backScope string) *flash {
 	return f
 }
 
-// panelView is one scope as the page draws it: its counts, the entries that
-// fit, and how many did not.
+// panelView is one scope as the page draws it: its counts and its entries.
 type panelView struct {
 	Scope   string
 	Open    int
 	Done    int
 	Dropped int
 	Entries []todoView
-	More    int
 }
 
 // Counts reads "2 open · 12 done · 1 dropped", leaving out the states that are
@@ -496,16 +490,8 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		if len(entries) == 0 || (scope != "" && sum.Scope != scope) {
 			continue
 		}
-		p := panelView{Scope: sum.Scope, Open: sum.Open, Done: sum.Done, Dropped: sum.Dropped}
-		// The cap keeps one loud scope from filling the page. Once you have
-		// asked for a single scope, or searched, it would only hide what you
-		// asked for — and its "more" link would point back at this same page.
-		if scope == "" && search == "" && len(entries) > panelCap {
-			p.More = len(entries) - panelCap
-			entries = entries[:panelCap]
-		}
-		p.Entries = entries
-		panels = append(panels, p)
+		panels = append(panels, panelView{Scope: sum.Scope, Open: sum.Open, Done: sum.Done,
+			Dropped: sum.Dropped, Entries: entries})
 	}
 	left, right := pack(panels)
 

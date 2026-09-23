@@ -350,13 +350,13 @@ func TestAgo(t *testing.T) {
 	}
 }
 
-// A scope's panel caps on the home page, but not once you have filtered to
-// that scope — there the "more" link would lead back to the same page.
-func TestPanelCapOnlyOnHome(t *testing.T) {
+// A busy scope shows every entry: no cap, no "more" link.
+func TestPanelShowsEverything(t *testing.T) {
 	srv, s, review, _ := newEnv(t)
 	c := client(t)
 	login(t, c, srv, review)
-	for i := 0; i < panelCap+3; i++ {
+	const n = 12
+	for i := 0; i < n; i++ {
 		if _, _, err := s.AddTodo(fmt.Sprintf("entry %d", i), "", "pilot", "test", "t"); err != nil {
 			t.Fatal(err)
 		}
@@ -365,19 +365,9 @@ func TestPanelCapOnlyOnHome(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if body := readAll(t, resp); !strings.Contains(body, "3 more in pilot") {
-		t.Fatalf("home did not cap the panel:\n%s", body)
-	}
-	resp, err = c.Get(srv.URL + "/?scope=pilot")
-	if err != nil {
-		t.Fatal(err)
-	}
 	body := readAll(t, resp)
-	if strings.Contains(body, "more in pilot") {
-		t.Fatalf("filtered view still capped:\n%s", body)
-	}
-	if n := strings.Count(body, `class="entry"`); n != panelCap+3 {
-		t.Fatalf("filtered view showed %d of %d entries", n, panelCap+3)
+	if got := strings.Count(body, `class="entry"`); got != n || strings.Contains(body, "more in") {
+		t.Fatalf("home showed %d of %d entries:\n%s", got, n, body)
 	}
 }
 

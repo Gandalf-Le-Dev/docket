@@ -233,7 +233,6 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .compact .entry .title { font-size: 14px; line-height: 20px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .compact .entry .src, .compact .entry .reason { display: none; }
-.panel .more { margin-top: var(--space-3); display: flex; }
 
 /* --- drawer: a floating layer, so it gets the overlay shadow --- */
 .with-drawer { display: flex; align-items: flex-start; }

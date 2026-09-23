@@ -198,9 +198,9 @@ does not forward those headers.
 
 One page, server-rendered, no JavaScript and no build step. Every scope with
 something open is a panel. The panels pack into two columns, tallest first, so a
-quiet project does not leave a hole. A busy scope shows its first five entries and
-offers the rest behind a link. A scope with nothing open does not exist on the page,
-but the Done and Dropped tabs still group closed entries by scope.
+quiet project does not leave a hole. Every panel shows all of its entries. A scope
+with nothing open does not exist on the page, but the Done and Dropped tabs still
+group closed entries by scope.
 
 Clicking an entry opens it in a drawer beside the list. The drawer is a link to
 `/?open=<id>`, so it is a normal page load, the back button works, and you can

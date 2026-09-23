@@ -85,10 +85,5 @@
       <span class="age" title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</span>
     </a>
   {{end}}
-  {{if $p.More}}
-  <div class="more">
-    <a class="btn--quiet" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.More}} more in {{$p.Name}}</a>
-  </div>
-  {{end}}
 </section>
 {{end}}
