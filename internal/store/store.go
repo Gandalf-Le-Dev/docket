@@ -346,13 +346,14 @@ type ScopeStats struct {
 	Open    int
 	Done    int
 	Dropped int
+	First   int64 // the scope's oldest item id: the order scopes came into use
 }
 
 // ScopeSummaries is every scope that has ever held an item, with its counts,
 // ordered by name. Unscoped items group under "".
 func (s *Store) ScopeSummaries() ([]ScopeStats, error) {
 	rows, err := s.db.Query(`SELECT scope,
-		SUM(state = 'open'), SUM(state = 'done'), SUM(state = 'dropped')
+		SUM(state = 'open'), SUM(state = 'done'), SUM(state = 'dropped'), MIN(id)
 		FROM todo GROUP BY scope ORDER BY scope`)
 	if err != nil {
 		return nil, err
@@ -361,7 +362,7 @@ func (s *Store) ScopeSummaries() ([]ScopeStats, error) {
 	var out []ScopeStats
 	for rows.Next() {
 		var st ScopeStats
-		if err := rows.Scan(&st.Scope, &st.Open, &st.Done, &st.Dropped); err != nil {
+		if err := rows.Scan(&st.Scope, &st.Open, &st.Done, &st.Dropped, &st.First); err != nil {
 			return nil, err
 		}
 		out = append(out, st)

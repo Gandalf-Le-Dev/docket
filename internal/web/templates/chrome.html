@@ -20,8 +20,22 @@
         <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
       </form>
       <a class="btn btn--primary" href="{{query "state" .State "scope" .Scope "q" .Query "new" "1"}}">New entry</a>
+      {{template "theme" .}}
     </span>
   </header>
+{{end}}
+
+{{/* Lucide's monitor, sun and moon */}}
+{{define "theme"}}
+  <form class="seg seg--icons" method="post" action="/theme" aria-label="Theme">
+    <input type="hidden" name="back" value="{{.Here}}">
+    <button type="submit" name="to" value="auto" title="Follow the system"{{if not .Theme}} class="on" aria-pressed="true"{{end}}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg><span class="sr">Auto</span></button>
+    <button type="submit" name="to" value="paper" title="Light"{{if eq .Theme "paper"}} class="on" aria-pressed="true"{{end}}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg><span class="sr">Light</span></button>
+    <button type="submit" name="to" value="ink" title="Dark"{{if eq .Theme "ink"}} class="on" aria-pressed="true"{{end}}>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg><span class="sr">Dark</span></button>
+  </form>
 {{end}}
 
 {{/* the tabs, and whatever narrows them, share one row so the band never
@@ -34,13 +48,22 @@
        href="{{query "state" "done" "scope" .Scope "q" .Query}}">Done<span class="n">{{index .Counts "done"}}</span></a>
     <a class="ui{{if eq .Tab "dropped"}} on{{end}}" {{if eq .Tab "dropped"}}aria-current="page"{{end}}
        href="{{query "state" "dropped" "scope" .Scope "q" .Query}}">Dropped<span class="n">{{index .Counts "dropped"}}</span></a>
-    {{if or .Scope .Query}}
-    <span class="filters">
-      {{if .Scope}}<a class="pill pill--on" href="{{query "state" .State "q" .Query}}">{{.Scope}} ✕</a>{{end}}
-      {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope}}">“{{.Query}}” ✕</a>{{end}}
-      <span class="ui muted">{{.Total}} match{{if ne .Total 1}}es{{end}}</span>
+    <span class="end">
+      {{if or .Scope .Query}}
+      <span class="filters">
+        {{if .Scope}}<a class="pill pill--on" href="{{query "state" .State "q" .Query}}">{{template "dot" (index .Hues .Scope)}}{{.Scope}} ✕</a>{{end}}
+        {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope}}">“{{.Query}}” ✕</a>{{end}}
+        <span class="ui muted">{{.Total}} match{{if ne .Total 1}}es{{end}}</span>
+      </span>
+      {{end}}
+      {{if .List}}
+      <form class="seg" method="post" action="/density" aria-label="Row density">
+        <input type="hidden" name="back" value="{{.Here}}">
+        <button type="submit" name="to" value="detailed"{{if not .Compact}} class="on" aria-pressed="true"{{end}}>Detailed</button>
+        <button type="submit" name="to" value="compact"{{if .Compact}} class="on" aria-pressed="true"{{end}}>Compact</button>
+      </form>
+      {{end}}
     </span>
-    {{end}}
   </nav>
 {{end}}
 
@@ -62,6 +85,9 @@
   <input type="hidden" name="back_scope" value="{{.Scope}}">
   <input type="hidden" name="back_q" value="{{.Query}}">
 {{end}}
+
+{{/* a scope's color, from its name; unscoped work has none */}}
+{{define "dot"}}{{with .}}<span class="dot {{.}}" aria-hidden="true"></span>{{end}}{{end}}
 
 {{/* a scope with nothing open does not exist, so it is not suggested */}}
 {{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

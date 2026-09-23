@@ -475,3 +475,62 @@ func TestScopeWithNothingOpenIsGone(t *testing.T) {
 		t.Fatalf("done tab grouping:\n%s", body)
 	}
 }
+
+// Scopes take colors in the order they came into use, so the first eight
+// never share one and a newer scope never repaints an older one.
+func TestScopeHues(t *testing.T) {
+	m := scopeHues([]store.ScopeStats{
+		{Scope: "b", First: 2}, {Scope: "", First: 1}, {Scope: "a", First: 9}, {Scope: "c", First: 3},
+	})
+	want := map[string]string{"b": "hue-0", "c": "hue-1", "a": "hue-2"}
+	if len(m) != len(want) {
+		t.Fatalf("scopeHues = %v", m)
+	}
+	for k, v := range want {
+		if m[k] != v {
+			t.Fatalf("scopeHues = %v, want %v", m, want)
+		}
+	}
+}
+
+// The density and theme switches set a cookie, return to the page they were
+// used on, and never follow a return path off the site.
+func TestViewSwitches(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("live", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	post := func(path, to, back string) (*http.Response, string) {
+		t.Helper()
+		resp, err := c.PostForm(srv.URL+path, url.Values{"to": {to}, "back": {back}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, readAll(t, resp)
+	}
+
+	resp, body := post("/density", "compact", "/?scope=pilot")
+	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `<body class="compact">`) ||
+		!strings.Contains(body, `<span class="dot hue-0" aria-hidden="true"></span>`) {
+		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
+	}
+	resp, body = post("/theme", "ink", "/todo/1")
+	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="ink">`) {
+		t.Fatalf("theme landed on %s:\n%s", resp.Request.URL, body)
+	}
+	if !strings.Contains(body, `class="dot hue-`) {
+		t.Fatalf("entry page lacks its scope color:\n%s", body)
+	}
+	_, body = post("/theme", "auto", "/")
+	if strings.Contains(body, "data-theme") || !strings.Contains(body, `value="auto" title="Follow the system" class="on"`) {
+		t.Fatalf("auto did not clear the theme:\n%s", body)
+	}
+	for _, back := range []string{"https://evil.example/", "//evil.example/", `/\evil.example/`} {
+		resp, _ = post("/density", "detailed", back)
+		if resp.Request.URL.Host != strings.TrimPrefix(srv.URL, "http://") || resp.Request.URL.Path != "/" {
+			t.Fatalf("back %q followed to %s", back, resp.Request.URL)
+		}
+	}
+}

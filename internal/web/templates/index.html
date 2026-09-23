@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{with .Theme}} data-theme="{{.}}"{{end}}>
 <head>
   {{template "head" .}}
   <title>docket</title>
 </head>
-<body>
+<body{{if .Compact}} class="compact"{{end}}>
 <div class="with-drawer{{if or .New .Open}} has-drawer{{end}}">
 <div class="main">
 {{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"></a>{{end}}
@@ -52,6 +52,7 @@
 {{define "panel"}}{{$p := .P}}{{$s := .S}}
 <section class="panel">
   <header>
+    {{template "dot" (index $s.Hues $p.Scope)}}
     {{if eq $s.Rename $p.Name}}
     <form class="rename" method="post" action="/scope/rename">
       {{template "back" $s}}

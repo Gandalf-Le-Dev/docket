@@ -42,6 +42,15 @@ const panelCap = 5
 
 const cookieName = "docket_session"
 
+// View preferences live in cookies per browser and never reach the store.
+const (
+	densityCookie = "docket_density" // "compact", or unset for detailed rows
+	themeCookie   = "docket_theme"   // "paper" or "ink", or unset to follow the OS
+)
+
+// hues is how many scope colors app.css defines (--hue-0 and on).
+const hues = 8
+
 type Handler struct {
 	store    *store.Store
 	assetVer string // content hash, so a deploy busts the year-long cache
@@ -73,6 +82,8 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /todo/reopen", h.requireReview(h.reopen))
 	h.mux.HandleFunc("POST /todo/update", h.requireReview(h.update))
 	h.mux.HandleFunc("POST /scope/rename", h.requireReview(h.renameScope))
+	h.mux.HandleFunc("POST /density", h.requireReview(pref(densityCookie, "compact")))
+	h.mux.HandleFunc("POST /theme", pref(themeCookie, "paper", "ink"))
 	return h
 }
 
@@ -126,6 +137,24 @@ func query(pairs ...string) template.URL {
 		return template.URL("/")
 	}
 	return template.URL("/?" + v.Encode())
+}
+
+// scopeHues gives each scope a color class by the order it came into use:
+// the first eight scopes never share one, and a new scope never repaints an
+// old one. Unscoped work gets none.
+func scopeHues(sums []store.ScopeStats) map[string]string {
+	order := make([]store.ScopeStats, 0, len(sums))
+	for _, sum := range sums {
+		if sum.Scope != "" {
+			order = append(order, sum)
+		}
+	}
+	sort.Slice(order, func(i, j int) bool { return order[i].First < order[j].First })
+	m := make(map[string]string, len(order))
+	for i, sum := range order {
+		m[sum.Scope] = fmt.Sprintf("hue-%d", i%hues)
+	}
+	return m
 }
 
 func shortTime(rfc3339 string) string {
@@ -230,25 +259,30 @@ func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 // chrome is what every signed-in page carries for its header and tabs, so
 // moving between the list and an entry never changes the band's shape.
 type chrome struct {
-	State  string // the list the header's search and links stay in
-	Tab    string // the tab drawn as current
-	Scope  string
-	Query  string
-	Counts map[string]int // per state, for the tabs
-	Scopes []store.ScopeStats
-	Flash  *flash
-	Error  string
-	Asset  string // stylesheet fingerprint
+	State   string // the list the header's search and links stay in
+	Tab     string // the tab drawn as current
+	Scope   string
+	Query   string
+	Counts  map[string]int // per state, for the tabs
+	Scopes  []store.ScopeStats
+	Flash   *flash
+	Error   string
+	Asset   string // stylesheet fingerprint
+	Here    string // this page's URL, for the view switches to return to
+	List    bool   // a list, so the density switch applies
+	Compact bool
+	Theme   string            // data-theme, or "" to follow the OS
+	Hues    map[string]string // scope to color class
 }
 
 type loginData struct {
-	State string // unused, but "head" and the chrome share one shape
 	Error string
 	Asset string // stylesheet fingerprint
+	Theme string
 }
 
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login.html", loginData{Asset: h.assetVer, Error: r.URL.Query().Get("err")})
+	h.render(w, "login.html", loginData{Asset: h.assetVer, Theme: cookie(r, themeCookie), Error: r.URL.Query().Get("err")})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -477,15 +511,20 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 
 	data := indexData{
 		chrome: chrome{
-			State:  state,
-			Tab:    state,
-			Scope:  scope,
-			Query:  search,
-			Counts: counts,
-			Scopes: summaries,
-			Flash:  flashFrom(q, 0, state, scope),
-			Error:  q.Get("err"),
-			Asset:  h.assetVer,
+			State:   state,
+			Tab:     state,
+			Scope:   scope,
+			Query:   search,
+			Counts:  counts,
+			Scopes:  summaries,
+			Hues:    scopeHues(summaries),
+			Flash:   flashFrom(q, 0, state, scope),
+			Error:   q.Get("err"),
+			Asset:   h.assetVer,
+			Here:    r.URL.RequestURI(),
+			List:    true,
+			Compact: cookie(r, densityCookie) == "compact",
+			Theme:   cookie(r, themeCookie),
 		},
 		Left:   left,
 		Right:  right,
@@ -558,9 +597,12 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Tab:    t.State,
 			Counts: counts,
 			Scopes: scopes,
+			Hues:   scopeHues(scopes),
 			Flash:  flashFrom(q, t.ID, "", ""),
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
+			Here:   r.URL.RequestURI(),
+			Theme:  cookie(r, themeCookie),
 		},
 		Item: newTodoView(t, true, "", ""),
 		Do:   mode(q.Get("do"), t.State),
@@ -665,6 +707,34 @@ func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {
 		r.Form.Set("back_scope", store.NormalizeScope(to))
 	}
 	back(w, r, err, did("renamed", 0))
+}
+
+func cookie(r *http.Request, name string) string {
+	if c, err := r.Cookie(name); err == nil {
+		return c.Value
+	}
+	return ""
+}
+
+// pref stores one view preference and returns to the page it was set from.
+// A value outside allowed clears it, back to the default. Only a local path
+// is followed back, so the form cannot send someone off-site.
+func pref(name string, allowed ...string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		c := &http.Cookie{Name: name, Path: "/", HttpOnly: true, Secure: link.HTTPS(r),
+			SameSite: http.SameSiteLaxMode, MaxAge: -1}
+		for _, v := range allowed {
+			if r.FormValue("to") == v {
+				c.Value, c.MaxAge = v, 365*24*60*60
+			}
+		}
+		http.SetCookie(w, c)
+		dest := r.FormValue("back")
+		if !strings.HasPrefix(dest, "/") || strings.HasPrefix(dest, "//") || strings.HasPrefix(dest, "/\\") {
+			dest = "/"
+		}
+		http.Redirect(w, r, dest, http.StatusSeeOther)
+	}
 }
 
 // did describes a completed action for back: what happened, to which item,

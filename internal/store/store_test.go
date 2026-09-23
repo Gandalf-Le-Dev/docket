@@ -231,10 +231,10 @@ func TestScopeSummaries(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []ScopeStats{
-		{"", 1, 0, 0},
-		{"docket", 1, 1, 1},
-		{"pilot", 0, 1, 0}, // all closed, still listed
-		{"thael", 2, 0, 0},
+		{"", 1, 0, 0, 6},
+		{"docket", 1, 1, 1, 1},
+		{"pilot", 0, 1, 0, 7}, // all closed, still listed
+		{"thael", 2, 0, 0, 4},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)

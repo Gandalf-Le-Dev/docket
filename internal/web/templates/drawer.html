@@ -2,7 +2,7 @@
 {{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
 <aside class="drawer" aria-label="Entry {{$t.ID}}">
   <header>
-    {{if $t.Scope}}<span class="crumb">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
+    {{if $t.Scope}}{{template "dot" (index $s.Hues $t.Scope)}}<span class="crumb">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
     <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page">#{{$t.ID}}</a>
     <a class="icon close" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
   </header>
