@@ -205,7 +205,8 @@ foot.
 Clicking an entry opens it in a drawer beside the list. The drawer is a link to
 `/?open=<id>`, so it is a normal page load, the back button works, and you can
 paste the URL to someone. The `#<id>` in the drawer's header opens the entry's own
-page at `/todo/<id>`, with the same header and tabs as the list.
+page at `/todo/<id>`, with the same header and tabs as the list. A click anywhere
+outside the drawer closes it.
 
 Every form opens in place, from a URL like the drawer. New entry puts its form in
 the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer or

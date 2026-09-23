@@ -5,8 +5,9 @@
   <title>docket</title>
 </head>
 <body>
-<div class="with-drawer">
+<div class="with-drawer{{if or .New .Open}} has-drawer{{end}}">
 <div class="main">
+{{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"></a>{{end}}
 <div class="band">
   {{template "header" .}}
   {{template "nav" .}}

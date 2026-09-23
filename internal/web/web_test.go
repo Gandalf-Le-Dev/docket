@@ -198,9 +198,10 @@ func TestItemPage(t *testing.T) {
 	}
 	body = readAll(t, resp)
 	for _, want := range []string{
-		`href="/?open=1&amp;state=done"`, // the row opens the drawer
-		`<a class="self" href="/todo/1"`, // the drawer opens the page
-		`class="entry on"`,               // the open row is marked
+		`href="/?open=1&amp;state=done"`,          // the row opens the drawer
+		`<a class="self" href="/todo/1"`,          // the drawer opens the page
+		`class="entry on"`,                        // the open row is marked
+		`<a class="backdrop" href="/?state=done"`, // a click outside closes it
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("drawer list missing %q:\n%s", want, body)

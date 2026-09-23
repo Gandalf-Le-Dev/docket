@@ -200,7 +200,14 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 
 /* --- drawer: a floating layer, so it gets the overlay shadow --- */
 .with-drawer { display: flex; align-items: flex-start; }
-.with-drawer > .main { flex: 1; min-width: 0; }
+.with-drawer > .main { flex: 1; min-width: 0; position: relative; z-index: 0; }
+/* Clicking outside the drawer closes it, with no script: a link to the closed
+   view lies under the list, and while the drawer is open only controls take a
+   click. Any other point falls through to that link. */
+.backdrop { position: absolute; inset: 0; z-index: -1; cursor: default; }
+.has-drawer > .main * { pointer-events: none; }
+.has-drawer > .main :is(a, button, input, textarea, select, label),
+.has-drawer > .main :is(a, button, input, textarea, select, label) * { pointer-events: auto; }
 /* pinned to the viewport, not to the list's height, so its actions stay in
    reach however long the list is */
 .drawer { width: 440px; flex: none; position: sticky; top: 0; align-self: flex-start;
