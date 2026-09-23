@@ -42,7 +42,7 @@ const cookieName = "docket_session"
 // View preferences live in cookies per browser and never reach the store.
 const (
 	densityCookie = "docket_density" // "compact", or unset for detailed rows
-	themeCookie   = "docket_theme"   // "paper" or "ink", or unset to follow the OS
+	themeCookie   = "docket_theme"   // "light" or "dark", or unset to follow the OS
 )
 
 // hues is how many scope colors app.css defines (--hue-0 and on).
@@ -80,7 +80,7 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /todo/update", h.requireReview(h.update))
 	h.mux.HandleFunc("POST /scope/rename", h.requireReview(h.renameScope))
 	h.mux.HandleFunc("POST /density", h.requireReview(pref(densityCookie, "compact")))
-	h.mux.HandleFunc("POST /theme", pref(themeCookie, "paper", "ink"))
+	h.mux.HandleFunc("POST /theme", pref(themeCookie, "light", "dark"))
 	return h
 }
 
@@ -292,7 +292,7 @@ type loginData struct {
 }
 
 func (h *Handler) loginForm(w http.ResponseWriter, r *http.Request) {
-	h.render(w, "login.html", loginData{Asset: h.assetVer, Theme: cookie(r, themeCookie), Wink: winks(), Error: r.URL.Query().Get("err")})
+	h.render(w, "login.html", loginData{Asset: h.assetVer, Theme: theme(r), Wink: winks(), Error: r.URL.Query().Get("err")})
 }
 
 func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
@@ -524,7 +524,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			Here:    r.URL.RequestURI(),
 			List:    true,
 			Compact: cookie(r, densityCookie) == "compact",
-			Theme:   cookie(r, themeCookie),
+			Theme:   theme(r),
 			Wink:    winks(),
 		},
 		Left:   left,
@@ -603,7 +603,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
 			Here:   r.URL.RequestURI(),
-			Theme:  cookie(r, themeCookie),
+			Theme:  theme(r),
 			Wink:   winks(),
 		},
 		Item: newTodoView(t, true, "", ""),
@@ -714,6 +714,17 @@ func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {
 func cookie(r *http.Request, name string) string {
 	if c, err := r.Cookie(name); err == nil {
 		return c.Value
+	}
+	return ""
+}
+
+// Cookies set before mroc 3.0.0 still say paper or ink, and live a year.
+func theme(r *http.Request) string {
+	switch cookie(r, themeCookie) {
+	case "light", "paper":
+		return "light"
+	case "dark", "ink":
+		return "dark"
 	}
 	return ""
 }

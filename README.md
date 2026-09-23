@@ -222,7 +222,7 @@ Both choices are kept in a cookie on the device.
 The look is the [mroc design system](https://github.com/Gandalf-Le-Dev/mroc-design-system):
 `internal/web/static/app.css` holds its tokens and `internal/web/static/fonts/` its
 two typefaces, both copied from that repository rather than restated here — change a
-value there and copy it across. Paper and ink themes both ship and follow the
+value there and copy it across. Light and dark themes both ship and follow the
 operating system unless `data-theme` says otherwise. The fonts are SIL OFL and their
 licences travel with them.
 

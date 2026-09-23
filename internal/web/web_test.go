@@ -506,8 +506,8 @@ func TestViewSwitches(t *testing.T) {
 		!strings.Contains(body, `<a class="name tint hue-0"`) {
 		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
 	}
-	resp, body = post("/theme", "ink", "/todo/1")
-	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="ink">`) {
+	resp, body = post("/theme", "dark", "/todo/1")
+	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="dark">`) {
 		t.Fatalf("theme landed on %s:\n%s", resp.Request.URL, body)
 	}
 	if !strings.Contains(body, `class=" tint hue-`) {
@@ -521,6 +521,22 @@ func TestViewSwitches(t *testing.T) {
 		resp, _ = post("/density", "detailed", back)
 		if resp.Request.URL.Host != strings.TrimPrefix(srv.URL, "http://") || resp.Request.URL.Path != "/" {
 			t.Fatalf("back %q followed to %s", back, resp.Request.URL)
+		}
+	}
+}
+
+// A theme cookie from before the light/dark rename keeps its choice, and an
+// unknown one falls back to following the OS.
+func TestThemeCookie(t *testing.T) {
+	for v, want := range map[string]string{
+		"light": "light", "dark": "dark", "paper": "light", "ink": "dark", "sepia": "", "": "",
+	} {
+		r := httptest.NewRequest("GET", "/", nil)
+		if v != "" {
+			r.AddCookie(&http.Cookie{Name: themeCookie, Value: v})
+		}
+		if got := theme(r); got != want {
+			t.Errorf("theme(%q) = %q, want %q", v, got, want)
 		}
 	}
 }
