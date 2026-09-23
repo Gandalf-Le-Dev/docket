@@ -507,14 +507,16 @@ func TestViewSwitches(t *testing.T) {
 		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
 	}
 	resp, body = post("/theme", "dark", "/todo/1")
-	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="dark">`) {
+	if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, `<html lang="en" data-theme="dark">`) ||
+		!strings.Contains(body, `aria-label="Theme: Dark"`) {
 		t.Fatalf("theme landed on %s:\n%s", resp.Request.URL, body)
 	}
 	if !strings.Contains(body, `class=" tint hue-`) {
 		t.Fatalf("entry page lacks its scope color:\n%s", body)
 	}
 	_, body = post("/theme", "auto", "/")
-	if strings.Contains(body, "data-theme") || !strings.Contains(body, `value="auto" title="Follow the system" class="on"`) {
+	if strings.Contains(body, "data-theme") || !strings.Contains(body, `value="auto" class="on"`) ||
+		!strings.Contains(body, `aria-label="Theme: System"`) {
 		t.Fatalf("auto did not clear the theme:\n%s", body)
 	}
 	for _, back := range []string{"https://evil.example/", "//evil.example/", `/\evil.example/`} {
