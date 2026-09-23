@@ -12,7 +12,7 @@
 {{define "header"}}
   <header class="hdr">
     {{template "mark" .}}
-    <a class="wm" href="/">docket</a>
+    <a class="wm" href="/">d<span class="o">o</span>cket</a>
     <span class="right">
       <form method="get" action="/" role="search">
         {{if and .State (ne .State "open")}}<input type="hidden" name="state" value="{{.State}}">{{end}}

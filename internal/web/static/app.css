@@ -132,6 +132,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   padding: var(--space-5) var(--space-5) var(--space-4); }
 .wm { font-size: 26px; font-weight: 600; letter-spacing: -0.03em; line-height: 1;
   color: var(--ink); text-decoration: none; }
+.wm .o { color: var(--attention); }
 .mark { display: block; color: var(--ink); }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
