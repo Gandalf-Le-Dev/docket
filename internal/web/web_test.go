@@ -442,3 +442,36 @@ func TestFormsOpenInPlace(t *testing.T) {
 		t.Fatalf("rename landed on %s:\n%s", resp.Request.URL, body)
 	}
 }
+
+// A scope with nothing open does not exist on the Open tab: no panel, no
+// suggestion. Its closed entries still group under it on the Done tab.
+func TestScopeWithNothingOpenIsGone(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, err := s.AddTodo("finished", "", "personal", "test", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CloseTodo(id, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := s.AddTodo("live", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := c.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	if strings.Contains(body, "personal") || !strings.Contains(body, `<option value="pilot">`) {
+		t.Fatalf("open tab shows a scope with nothing open:\n%s", body)
+	}
+	resp, err = c.Get(srv.URL + "/?state=done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, `>personal</a>`) || strings.Contains(body, `>pilot</a>`) {
+		t.Fatalf("done tab grouping:\n%s", body)
+	}
+}

@@ -386,7 +386,6 @@ type indexData struct {
 	chrome
 	Left   []panelView
 	Right  []panelView
-	Quiet  []string // scopes with nothing in this state
 	Total  int
 	Open   *todoView // the drawer's entry, when ?open= named one
 	Do     string    // "edit" or "drop": the drawer's entry as that form
@@ -458,23 +457,12 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var panels []panelView
-	var quiet []string
 	for _, sum := range summaries {
-		if scope != "" && sum.Scope != scope {
-			continue
-		}
 		entries := byScope[sum.Scope]
-		p := panelView{Scope: sum.Scope, Open: sum.Open, Done: sum.Done, Dropped: sum.Dropped}
-		if len(entries) == 0 {
-			// A scope with nothing in this state is still a scope. One with
-			// nothing at all in it folds into a line at the foot instead.
-			if sum.Open+sum.Done+sum.Dropped == 0 || (scope == "" && search == "") {
-				quiet = append(quiet, p.Name())
-				continue
-			}
-			panels = append(panels, p)
+		if len(entries) == 0 || (scope != "" && sum.Scope != scope) {
 			continue
 		}
+		p := panelView{Scope: sum.Scope, Open: sum.Open, Done: sum.Done, Dropped: sum.Dropped}
 		// The cap keeps one loud scope from filling the page. Once you have
 		// asked for a single scope, or searched, it would only hide what you
 		// asked for — and its "more" link would point back at this same page.
@@ -501,7 +489,6 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 		},
 		Left:   left,
 		Right:  right,
-		Quiet:  quiet,
 		Total:  len(todos),
 		Rename: q.Get("rename"),
 	}

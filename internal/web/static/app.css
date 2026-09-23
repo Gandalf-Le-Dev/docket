@@ -112,6 +112,9 @@ input[type="text"], input[type="search"], input[type="password"], textarea, sele
   border: var(--hairline) solid var(--border-strong); border-radius: var(--radius-md);
 }
 textarea { height: auto; min-height: 88px; padding: var(--space-2) var(--space-3); resize: vertical; }
+/* scope inputs suggest names as you type; Chrome's dropdown arrow beside
+   them reads as a select, which they are not */
+input[list]::-webkit-calendar-picker-indicator { display: none !important; }
 input::placeholder, textarea::placeholder { color: var(--ink-subtle); }
 label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-muted); margin: 0 0 var(--space-2); }
 .tag {
@@ -192,11 +195,6 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .entry .age { font-family: var(--font-mono); font-size: 11px; font-weight: 500;
   color: var(--ink-muted); white-space: nowrap; }
 .panel .more { margin-top: var(--space-3); display: flex; }
-.panel .clear { padding: var(--space-3) 0 var(--space-2); color: var(--ink-subtle);
-  font-size: 13px; font-weight: 500; }
-.quiet-scopes { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
-  padding: 0 var(--space-5) var(--space-6); }
-.quiet-scopes .names { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 
 /* --- drawer: a floating layer, so it gets the overlay shadow --- */
 .with-drawer { display: flex; align-items: flex-start; }

@@ -63,4 +63,5 @@
   <input type="hidden" name="back_q" value="{{.Query}}">
 {{end}}
 
-{{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if .Scope}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}
+{{/* a scope with nothing open does not exist, so it is not suggested */}}
+{{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

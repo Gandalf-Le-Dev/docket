@@ -41,12 +41,6 @@
 </div>
 {{end}}
 
-{{if .Quiet}}
-<div class="quiet-scopes">
-  <span class="ui muted">{{len .Quiet}} scope{{if ne (len .Quiet) 1}}s{{end}} with nothing {{.State}}</span>
-  <span class="names">{{range $i, $n := .Quiet}}{{if $i}} · {{end}}{{$n}}{{end}}</span>
-</div>
-{{end}}
 {{template "scopes-list" .}}
 </div>
 {{if .New}}{{template "new-drawer" .}}
@@ -95,6 +89,5 @@
     <a class="btn--quiet" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.More}} more in {{$p.Name}}</a>
   </div>
   {{end}}
-  {{if not $p.Entries}}<div class="clear">All clear.</div>{{end}}
 </section>
 {{end}}

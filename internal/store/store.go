@@ -339,8 +339,8 @@ func (s *Store) Scopes() ([]ScopeCount, error) {
 }
 
 // ScopeStats is one scope with a count per state. Unlike Scopes, it includes
-// scopes whose items are all closed — the web page lists those too, so that a
-// project you finished does not simply vanish.
+// scopes whose items are all closed: the web page's Done and Dropped tabs
+// still group closed items under the scope they were filed in.
 type ScopeStats struct {
 	Scope   string
 	Open    int
