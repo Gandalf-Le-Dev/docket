@@ -165,8 +165,8 @@
   document.addEventListener("htmx:beforeSwap", (e) => {
     const { boosted, requestConfig, xhr, serverResponse, isError } = e.detail;
     if (!boosted) return;
-    const page = / id="page" data-asset="([^"]*)"/.exec(serverResponse);
-    const stale = page && !isError && page[1] !== asset;
+    const page = new DOMParser().parseFromString(serverResponse, "text/html").getElementById("page");
+    const stale = page && !isError && page.dataset.asset !== asset;
     const offPage = requestConfig.verb === "get" && (isError || !page);
     if (!stale && !offPage) return;
     e.preventDefault();
