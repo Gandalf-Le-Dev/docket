@@ -242,6 +242,10 @@ trust the file name. Images are stored in the same SQLite file as the entries, s
 backup of that file includes them. Only images stored in Docket are shown. A link to
 an image on another site stays as plain text.
 
+When no entry's body shows an image for 7 days, Docket deletes it. Entries that are
+done or dropped still count, so their images stay. SQLite uses the freed space for new
+data, but the file does not get smaller.
+
 Agents see the images too. `todo_get` returns each image in the body as MCP image
 content after the item's text. A result holds up to five images. Each one can be up
 to 5 MB and all of them together up to 10 MB, counted as the base64 text the agent
