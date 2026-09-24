@@ -381,7 +381,7 @@ func TestImageUpload(t *testing.T) {
 	}{
 		"not an image": {[]byte("<svg><script>alert(1)</script></svg>"), nil, http.StatusBadRequest},
 		"too big":      {make([]byte, 6<<20), nil, http.StatusRequestEntityTooLarge},
-		"cross-site":   {pic, http.Header{"Sec-Fetch-Site": {"same-site"}}, http.StatusForbidden},
+		"cross-origin": {pic, http.Header{"Sec-Fetch-Site": {"same-site"}}, http.StatusForbidden},
 	} {
 		resp := upload(t, c, srv, tc.data, tc.header)
 		var e struct {
@@ -395,19 +395,20 @@ func TestImageUpload(t *testing.T) {
 	}
 }
 
-// Every form post, not only the image upload, refuses another site: a
-// sibling subdomain still carries the SameSite=Lax cookie.
-func TestCrossSitePostsRefused(t *testing.T) {
+// Every post, not only the image upload, refuses another origin: a sibling
+// subdomain still carries the SameSite=Lax cookie. A request with neither
+// Sec-Fetch-Site nor Origin is not a browser's cross-site one, and passes.
+func TestCrossOriginPostsRefused(t *testing.T) {
 	srv, s, review, _ := newEnv(t)
 	c := client(t)
 	login(t, c, srv, review)
 	id, _, _ := s.AddTodo("keep me open", "", "", "test", "t")
-	post := func(path, site string) *http.Response {
+	post := func(path string, header http.Header) *http.Response {
 		t.Helper()
-		form := url.Values{"id": {"1"}, "title": {"planted"}}.Encode()
+		form := url.Values{"id": {"1"}, "title": {"planted"}, "token": {review}, "to": {"dark"}}.Encode()
 		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(form))
+		req.Header = header.Clone()
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-		req.Header.Set("Sec-Fetch-Site", site)
 		resp, err := c.Do(req)
 		if err != nil {
 			t.Fatal(err)
@@ -415,23 +416,30 @@ func TestCrossSitePostsRefused(t *testing.T) {
 		resp.Body.Close()
 		return resp
 	}
-	for _, site := range []string{"same-site", "cross-site"} {
-		for _, path := range []string{"/todo/close", "/add", "/logout"} {
-			if resp := post(path, site); resp.StatusCode != http.StatusForbidden {
-				t.Fatalf("%s post to %s: %d", site, path, resp.StatusCode)
+	for _, header := range []http.Header{
+		{"Sec-Fetch-Site": {"same-site"}},
+		{"Sec-Fetch-Site": {"cross-site"}},
+		{"Origin": {"https://sibling.example"}},
+	} {
+		for _, path := range []string{"/todo/close", "/add", "/logout", "/login", "/theme", "/image"} {
+			if resp := post(path, header); resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("%v post to %s: %d", header, path, resp.StatusCode)
 			}
 		}
 	}
 	if got, _ := s.GetTodo(id); got.State != "open" {
-		t.Fatalf("cross-site close went through: %+v", got)
+		t.Fatalf("cross-origin close went through: %+v", got)
 	}
 	if todos, _ := s.ListTodos("all", "", ""); len(todos) != 1 {
-		t.Fatalf("cross-site add went through: %+v", todos)
+		t.Fatalf("cross-origin add went through: %+v", todos)
 	}
-	// The same post from the page itself goes through.
-	resp := post("/todo/close", "same-origin")
-	if got, _ := s.GetTodo(id); resp.StatusCode != http.StatusOK || got.State != "done" {
-		t.Fatalf("same-origin close: %d %+v", resp.StatusCode, got)
+	for _, header := range []http.Header{{"Sec-Fetch-Site": {"same-origin"}}, {}} {
+		open := "open"
+		s.UpdateTodo(id, store.TodoUpdate{State: &open})
+		resp := post("/todo/close", header)
+		if got, _ := s.GetTodo(id); resp.StatusCode != http.StatusOK || got.State != "done" {
+			t.Fatalf("%v close: %d %+v", header, resp.StatusCode, got)
+		}
 	}
 }
 
