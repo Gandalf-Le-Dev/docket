@@ -104,9 +104,14 @@
     ta.addEventListener("dragleave", () => ta.classList.remove("drop-target"));
     ta.addEventListener("drop", (e) => {
       ta.classList.remove("drop-target");
-      const files = images(e.dataTransfer && e.dataTransfer.files);
-      if (!files.length) return;
+      if (!dragsFiles(e)) return;
+      // left alone, the browser opens a dropped file in place of the page and the draft is lost
       e.preventDefault();
+      const files = images(e.dataTransfer.files);
+      if (!files.length) {
+        status.textContent = "Only images can be attached";
+        return;
+      }
       ta.focus();
       upload(ta, status, files);
     });
