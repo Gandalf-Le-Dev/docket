@@ -177,7 +177,7 @@ config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
 |------|------|------|
 | `todo_add {title, body?, scope?, source?}` | publish + review | File an item. Filing the same title+scope twice while open returns the existing id with `duplicate: true` instead of a second copy. |
 | `todo_list {scope?, state?, q?}` | review | Read the backlog. `state`: `open` (default), `done`, `dropped`, `all`; `q` searches title and body. |
-| `todo_get {id}` | review | One item. |
+| `todo_get {id}` | review | One item, with the images its body shows (see [Images](#images)). |
 | `todo_update {id, title?, body?, scope?, state?}` | review | Edit anything; `state: "open"` reopens a closed item. |
 | `todo_close {id, outcome?, reason?}` | review | Close with a verdict: `done` (default) or `dropped`. `reason` is appended to the body. |
 | `todo_scopes {}` | review | The scopes in use, with open counts. |
@@ -196,8 +196,9 @@ does not forward those headers.
 
 ## The web page
 
-One page, server-rendered, no JavaScript and no build step. Every scope with
-something open is a panel. The panels pack into two columns, tallest first, so a
+One page, server-rendered, with no build step. It has one small script, and it
+only uploads images (see [Images](#images)). Everything else works without it.
+Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope
 with nothing open does not exist on the page, but the Done and Dropped tabs still
 group closed entries by scope.
@@ -225,6 +226,24 @@ two typefaces, both copied from that repository rather than restated here — ch
 value there and copy it across. Light and dark themes both ship and follow the
 operating system unless `data-theme` says otherwise. The fonts are SIL OFL and their
 licences travel with them.
+
+### Images
+
+You can put images in the body of an entry while you write it. There are three ways:
+
+- Paste an image into the body field with Ctrl+V or Cmd+V.
+- Drag an image file onto the body field.
+- Click Attach image under the field and pick one or more files. Use this on a phone.
+
+Each image uploads at once. The body gets a line like `![image](/image/12)`, and
+the entry shows the image in its place. An image can be up to 5 MB, in PNG, JPEG,
+GIF or WebP format. Docket checks the file itself to find its format. It does not
+trust the file name. Images are stored in the same SQLite file as the entries, so a
+backup of that file includes them. Only images stored in Docket are shown. A link to
+an image on another site stays as plain text.
+
+Agents see the images too. `todo_get` returns each image in the body as MCP image
+content after the item's text, up to five per item.
 
 ## Running in Docker
 
