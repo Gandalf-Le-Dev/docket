@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os"
 	"text/tabwriter"
+	"time"
 
 	"github.com/Gandalf-Le-Dev/docket/internal/mcp"
 	"github.com/Gandalf-Le-Dev/docket/internal/store"
@@ -84,6 +85,7 @@ func serve(args []string) {
 
 	s := openStore(*db)
 	defer s.Close()
+	go pruneImages(s)
 
 	mux := http.NewServeMux()
 	mux.Handle("/mcp", mcp.NewHandler(s, version, *publicURL))
@@ -101,6 +103,28 @@ func serve(args []string) {
 	log.Printf("docket %s listening on %s (db %s)", version, *addr, *db)
 	if err := http.ListenAndServe(*addr, mux); err != nil {
 		log.Fatalf("docket: %v", err)
+	}
+}
+
+// A week covers a draft left open over a weekend, and an edit undone days
+// after it removed an image.
+const (
+	imagePruneEvery = time.Hour
+	imageGrace      = 7 * 24 * time.Hour
+)
+
+// pruneImages runs for the life of the server; ListenAndServe has no
+// shutdown path for it to stop with.
+func pruneImages(s *store.Store) {
+	for {
+		n, err := s.PruneImages(imageGrace)
+		switch {
+		case err != nil:
+			log.Printf("docket: prune images: %v", err)
+		case n > 0:
+			log.Printf("docket: pruned %d unreferenced images", n)
+		}
+		time.Sleep(imagePruneEvery)
 	}
 }
 
