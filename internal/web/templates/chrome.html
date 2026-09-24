@@ -1,6 +1,10 @@
+{{/* No history cache: back refetches, so it shows the backlog as it is now
+     and no copy of it is left in the browser's storage. */}}
 {{define "head"}}<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"historyCacheSize":0,"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'>
 <link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
+<script src="/static/htmx.min.js?v={{.Asset}}" defer></script>
 <script src="/static/app.js?v={{.Asset}}" defer></script>
 <link rel="icon" href="/static/mroc-lens.svg" type="image/svg+xml">{{end}}
 

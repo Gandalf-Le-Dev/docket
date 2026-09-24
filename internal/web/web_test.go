@@ -586,9 +586,12 @@ func TestFormsOpenInPlace(t *testing.T) {
 			}
 		}
 	}
-	// The script is fingerprinted like the stylesheet, so a deploy busts both.
-	if body := get("/"); !strings.Contains(body, `<script src="/static/app.js?v=`+hashAsset("static/app.css", "static/app.js")+`" defer>`) {
-		t.Fatalf("page does not load the fingerprinted script:\n%s", body)
+	// The scripts are fingerprinted like the stylesheet, so a deploy busts all
+	// three, and htmx is there before the script that listens for its events.
+	v := hashAsset(fingerprinted...)
+	if body := get("/"); !strings.Contains(body, `<script src="/static/htmx.min.js?v=`+v+`" defer></script>
+<script src="/static/app.js?v=`+v+`" defer>`) {
+		t.Fatalf("page does not load the fingerprinted scripts:\n%s", body)
 	}
 	// The entry page carries the list's header and tabs, not a lesser one.
 	if body := get("/todo/1"); !strings.Contains(body, `class="nav"`) || !strings.Contains(body, `role="search"`) {

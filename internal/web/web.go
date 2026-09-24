@@ -62,7 +62,7 @@ type Handler struct {
 func NewHandler(s *store.Store) *Handler {
 	h := &Handler{
 		store:    s,
-		assetVer: hashAsset("static/app.css", "static/app.js"),
+		assetVer: hashAsset(fingerprinted...),
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
 			"ago":       ago,
@@ -93,8 +93,9 @@ func NewHandler(s *store.Store) *Handler {
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.mux.ServeHTTP(w, r) }
 
-// cacheStatic lets the fonts and stylesheet be cached hard: they change only
-// when the binary does, and the binary is the only thing that serves them.
+// cacheStatic lets the fonts, stylesheet and scripts be cached hard: they
+// change only when the binary does, and the binary is the only thing that
+// serves them.
 func cacheStatic(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "public, max-age=604800")
@@ -103,8 +104,11 @@ func cacheStatic(next http.Handler) http.Handler {
 }
 
 // AssetVer is the fingerprint templates append to the stylesheet's and the
-// script's URLs.
+// scripts' URLs.
 func (h *Handler) AssetVer() string { return h.assetVer }
+
+// fingerprinted is every file a page links with ?v=AssetVer.
+var fingerprinted = []string{"static/app.css", "static/app.js", "static/htmx.min.js"}
 
 // hashAsset fingerprints embedded files so their URLs change when any does.
 // Without it the long cache below would serve last week's stylesheet.
@@ -309,7 +313,7 @@ type chrome struct {
 	Scopes  []store.ScopeStats
 	Flash   *flash
 	Error   string
-	Asset   string // stylesheet and script fingerprint
+	Asset   string // stylesheet and scripts fingerprint
 	Here    string // this page's URL, for the view switches to return to
 	List    bool   // a list, so the density switch applies
 	Compact bool
@@ -320,7 +324,7 @@ type chrome struct {
 
 type loginData struct {
 	Error string
-	Asset string // stylesheet and script fingerprint
+	Asset string // stylesheet and scripts fingerprint
 	Theme string
 	Wink  template.CSS
 }
