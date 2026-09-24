@@ -110,6 +110,77 @@ func TestCloseReopenAndReason(t *testing.T) {
 	}
 }
 
+// Undo puts back exactly what the close found, where reopening keeps the
+// verdict note: an older note already in the body must survive untouched.
+func TestUndoClose(t *testing.T) {
+	s := testStore(t)
+	advance := setClock(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	id, _, _ := s.AddTodo("item", "why\n\n— closed (dropped): an older verdict", "a", "", "x")
+	before, _ := s.GetTodo(id)
+	var ve ValidationError
+
+	undo := func(want Todo) {
+		t.Helper()
+		advance(time.Minute)
+		got, err := s.UndoClose(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stored, _ := s.GetTodo(id)
+		if got != want || stored != want {
+			t.Fatalf("undo\n got    %+v\n stored %+v\n want   %+v", got, stored, want)
+		}
+	}
+	for _, reason := range []string{"not now", ""} {
+		advance(time.Minute)
+		if _, err := s.CloseTodo(id, "dropped", reason); err != nil {
+			t.Fatal(err)
+		}
+		undo(before)
+	}
+	if _, err := s.UndoClose(id); !errors.As(err, &ve) {
+		t.Fatalf("undo twice: %v", err)
+	}
+
+	// A done item dropped later goes back to done, closed when it was.
+	advance(time.Minute)
+	done, _ := s.CloseTodo(id, "done", "shipped")
+	advance(time.Minute)
+	s.CloseTodo(id, "dropped", "reverted upstream")
+	undo(done)
+
+	// Any other write since the close leaves nothing to undo.
+	title := "edited"
+	for name, write := range map[string]func(){
+		"edit":   func() { s.UpdateTodo(id, TodoUpdate{Title: &title}) },
+		"rename": func() { s.RenameScope("a", "b"); s.RenameScope("b", "a") },
+		"window": func() { advance(UndoWindow + time.Minute) },
+	} {
+		if _, err := s.CloseTodo(id, "done", ""); err != nil {
+			t.Fatal(err)
+		}
+		write()
+		if _, err := s.UndoClose(id); !errors.As(err, &ve) {
+			t.Fatalf("undo after %s: %v", name, err)
+		}
+		open := "open"
+		s.UpdateTodo(id, TodoUpdate{State: &open})
+	}
+
+	// A close past the window is forgotten by the next one, not kept forever.
+	s.CloseTodo(id, "done", "")
+	advance(UndoWindow + time.Minute)
+	other, _, _ := s.AddTodo("other", "", "", "", "x")
+	s.CloseTodo(other, "done", "")
+	var n int
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM closing").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("closing rows: %d %v", n, err)
+	}
+	if _, err := s.UndoClose(999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("undo unknown: %v", err)
+	}
+}
+
 func TestListFilters(t *testing.T) {
 	s := testStore(t)
 	a, _, _ := s.AddTodo("alpha needle", "", "one", "", "x")

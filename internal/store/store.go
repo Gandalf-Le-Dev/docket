@@ -1,6 +1,7 @@
 // Package store owns Docket's SQLite database: the todos, the tokens and the
-// images pasted into bodies. One file, WAL mode, three tables. The whole dataset is a few thousand rows
-// forever, so everything here is deliberately boring.
+// images pasted into bodies, plus what each close replaced so it can be
+// undone. One file, WAL mode, four tables. The whole dataset is a few thousand
+// rows forever, so everything here is deliberately boring.
 package store
 
 import (
@@ -50,6 +51,17 @@ CREATE TABLE IF NOT EXISTS image (
   data       BLOB NOT NULL,
   created_at TEXT NOT NULL,
   seen_at    TEXT NOT NULL
+);
+
+-- What an item's latest close replaced, so UndoClose can put it back exactly.
+-- Any other write to the item deletes its row: that close is no longer undoable.
+CREATE TABLE IF NOT EXISTS closing (
+  todo_id    INTEGER PRIMARY KEY,
+  body       TEXT NOT NULL,
+  state      TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  closed_at  TEXT,
+  at         TEXT NOT NULL
 );
 `
 
@@ -200,8 +212,17 @@ func scanTodo(row interface{ Scan(...any) error }) (Todo, error) {
 
 const todoCols = "id, title, body, scope, source, via, state, created_at, updated_at, closed_at"
 
-func (s *Store) GetTodo(id int64) (Todo, error) {
-	t, err := scanTodo(s.db.QueryRow("SELECT "+todoCols+" FROM todo WHERE id = ?", id))
+// querier is what the database and a transaction share, so one write can be
+// part of a larger one.
+type querier interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func (s *Store) GetTodo(id int64) (Todo, error) { return getTodo(s.db, id) }
+
+func getTodo(q querier, id int64) (Todo, error) {
+	t, err := scanTodo(q.QueryRow("SELECT "+todoCols+" FROM todo WHERE id = ?", id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return Todo{}, ErrNotFound
 	}
@@ -271,7 +292,20 @@ type TodoUpdate struct {
 }
 
 func (s *Store) UpdateTodo(id int64, u TodoUpdate) (Todo, error) {
-	t, err := s.GetTodo(id)
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Todo{}, err
+	}
+	defer tx.Rollback()
+	t, err := updateTodo(tx, id, u)
+	if err != nil {
+		return Todo{}, err
+	}
+	return t, tx.Commit()
+}
+
+func updateTodo(q querier, id int64, u TodoUpdate) (Todo, error) {
+	t, err := getTodo(q, id)
 	if err != nil {
 		return Todo{}, err
 	}
@@ -305,16 +339,20 @@ func (s *Store) UpdateTodo(id int64, u TodoUpdate) (Todo, error) {
 	t.ClosedAt = closed.String
 	t.UpdatedAt = now()
 
-	_, err = s.db.Exec(
+	if _, err := q.Exec(
 		"UPDATE todo SET title = ?, body = ?, scope = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",
 		t.Title, t.Body, t.Scope, t.State, t.UpdatedAt, closed, t.ID,
-	)
+	); err != nil {
+		return Todo{}, err
+	}
+	_, err = q.Exec("DELETE FROM closing WHERE todo_id = ?", t.ID)
 	return t, err
 }
 
 // CloseTodo records a verdict: done (default) or dropped. Dropped is distinct
 // from done because "not going to do this" is worth remembering. A non-empty
-// reason is appended to the body so it survives with the item.
+// reason is appended to the body so it survives with the item. What the close
+// replaced is kept for a while, so UndoClose can reverse it.
 func (s *Store) CloseTodo(id int64, outcome, reason string) (Todo, error) {
 	if outcome == "" {
 		outcome = "done"
@@ -322,18 +360,74 @@ func (s *Store) CloseTodo(id int64, outcome, reason string) (Todo, error) {
 	if outcome != "done" && outcome != "dropped" {
 		return Todo{}, ValidationError("outcome must be done or dropped")
 	}
-	t, err := s.GetTodo(id)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return Todo{}, err
 	}
-	body := t.Body
+	defer tx.Rollback()
+	before, err := getTodo(tx, id)
+	if err != nil {
+		return Todo{}, err
+	}
+	body := before.Body
 	if reason = strings.TrimSpace(reason); reason != "" {
 		if body != "" {
 			body += "\n\n"
 		}
 		body += "— closed (" + outcome + "): " + reason
 	}
-	return s.UpdateTodo(id, TodoUpdate{Body: &body, State: &outcome})
+	t, err := updateTodo(tx, id, TodoUpdate{Body: &body, State: &outcome})
+	if err != nil {
+		return Todo{}, err
+	}
+	if _, err := tx.Exec("DELETE FROM closing WHERE at < ?", clock().Add(-UndoWindow).UTC().Format(time.RFC3339)); err != nil {
+		return Todo{}, err
+	}
+	if _, err := tx.Exec("INSERT INTO closing (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
+		id, before.Body, before.State, before.UpdatedAt,
+		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, t.UpdatedAt); err != nil {
+		return Todo{}, err
+	}
+	return t, tx.Commit()
+}
+
+// UndoWindow is how long a close stays undoable. The web page offers Undo for
+// seconds; the rest is slack for a page left open, not an archive.
+const UndoWindow = 24 * time.Hour
+
+// UndoClose puts an item back exactly as its latest close found it: body,
+// state and both timestamps. Reopening instead keeps the verdict note as
+// history. Once anything else has written to the item, or UndoWindow has
+// passed, there is nothing left to undo.
+func (s *Store) UndoClose(id int64) (Todo, error) {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return Todo{}, err
+	}
+	defer tx.Rollback()
+	t, err := getTodo(tx, id)
+	if err != nil {
+		return Todo{}, err
+	}
+	var closed sql.NullString
+	cutoff := clock().Add(-UndoWindow).UTC().Format(time.RFC3339)
+	err = tx.QueryRow("SELECT body, state, updated_at, closed_at FROM closing WHERE todo_id = ? AND at >= ?", id, cutoff).
+		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Todo{}, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
+	}
+	if err != nil {
+		return Todo{}, err
+	}
+	t.ClosedAt = closed.String
+	if _, err := tx.Exec("UPDATE todo SET body = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",
+		t.Body, t.State, t.UpdatedAt, closed, id); err != nil {
+		return Todo{}, err
+	}
+	if _, err := tx.Exec("DELETE FROM closing WHERE todo_id = ?", id); err != nil {
+		return Todo{}, err
+	}
+	return t, tx.Commit()
 }
 
 // Scopes lists the scopes in use with their open counts — the entire
@@ -393,11 +487,23 @@ func (s *Store) RenameScope(from, to string) (int64, error) {
 	if len(to) > MaxScopeBytes {
 		return 0, ValidationError(fmt.Sprintf("scope exceeds %d bytes", MaxScopeBytes))
 	}
-	res, err := s.db.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)
+	tx, err := s.db.Begin()
 	if err != nil {
 		return 0, err
 	}
-	return res.RowsAffected()
+	defer tx.Rollback()
+	if _, err := tx.Exec("DELETE FROM closing WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
+		return 0, err
+	}
+	res, err := tx.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return n, tx.Commit()
 }
 
 // StateCounts feeds the web UI's tabs.
