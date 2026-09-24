@@ -14,8 +14,11 @@
 // did shows as a toast, carried out of band into a live region outside #page;
 // Done's and Drop's carry an Undo that puts the entry back exactly, verdict
 // note and all (store.UndoClose). The page's own script, static/app.js,
-// uploads images pasted or dropped into a body. Without either script every
-// link and form still works as a page load.
+// uploads images pasted or dropped into a body, and keeps an open page
+// current: /events streams the store's change feed, and on a change the
+// script fetches the page's own URL again and swaps its #page like a boosted
+// link, holding off while a form is being filled in. Without either script
+// every link and form still works as a page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented

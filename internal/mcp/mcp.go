@@ -8,8 +8,9 @@
 //     handshake. Docket answers it but keeps zero per-client state and never
 //     mints an Mcp-Session-Id, which those revisions permit.
 //
-// Every response is a single plain JSON object; Docket never streams and
-// never pushes, so no SSE and no GET endpoint.
+// Every response is a single plain JSON object; this endpoint never streams
+// and never pushes, so no SSE and no GET. (The web page's own change stream,
+// /events, is not MCP.)
 package mcp
 
 import (

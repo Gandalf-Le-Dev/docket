@@ -345,6 +345,13 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .toast form { display: inline; }
 @keyframes toast-in { from { opacity: 0; transform: translateY(var(--space-2)); } }
 @keyframes toast-out { to { opacity: 0; visibility: hidden; } }
+/* changes held back while a form is open: said once, in the corner the
+   toasts leave free */
+.live-note { position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: 1;
+  padding: var(--space-1) var(--space-3); font-family: var(--font-mono); font-size: 12px;
+  font-weight: 500; line-height: 20px; color: var(--ink-muted); background: var(--surface-raised);
+  border: var(--hairline) solid var(--border); border-radius: var(--radius-lg); }
+.live-note:empty { display: none; }
 
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
@@ -389,6 +396,7 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
   .facts { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline) solid var(--border); }
   .nav .filters .ui, .nav .seg { display: none; }
   .toasts { left: var(--space-4); bottom: var(--space-4); max-width: calc(100vw - 2 * var(--space-4)); }
+  .live-note { right: var(--space-4); bottom: var(--space-4); }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn, .entry, .panel > header .tools { transition-duration: 1ms; }

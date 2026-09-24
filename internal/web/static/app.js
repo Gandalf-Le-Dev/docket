@@ -1,6 +1,7 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
-// the text as the marker the server draws; and a swap that leaves what it
-// brought out of sight scrolls to it. Bodies arrive with htmx swaps as well as
+// the text as the marker the server draws; a swap that leaves what it
+// brought out of sight scrolls to it; and a page refreshes itself when an
+// item changes anywhere (see live). Bodies arrive with htmx swaps as well as
 // with the page, so every listener sits on the document and finds its field
 // when the event comes, rather than binding to fields once at load.
 (() => {
@@ -142,10 +143,15 @@
     upload(field.ta, field.status, files);
   });
 
+  const liveHeader = "Docket-Live";
+  const isLive = (config) => Boolean(config && config.headers && config.headers[liveHeader]);
+
   // Swaps from the list keep its scroll, which can leave what they brought out
   // of sight: a failed action's message at the top of the list, or the drawer,
-  // which a narrow screen stacks above the list.
-  document.addEventListener("htmx:afterSettle", () => {
+  // which a narrow screen stacks above the list. A live refresh (see live)
+  // brought nothing anyone asked to see, so it stays where the reader is.
+  document.addEventListener("htmx:afterSettle", (e) => {
+    if (isLive(e.detail.requestConfig)) return;
     const shown = document.querySelector("#page .error") || document.querySelector(".drawer");
     if (!shown) return;
     const { top } = shown.getBoundingClientRect();
@@ -188,4 +194,218 @@
     },
     true,
   );
+
+  if (document.getElementById("page") && window.htmx && window.EventSource) live();
+
+  // /events says when an item changed anywhere: an agent, another tab, another
+  // device. The page then fetches its own URL again and swaps #page as a
+  // boosted link would, without a history entry, so what it shows is always
+  // what that URL renders now. It waits while a swap would cost someone
+  // something: a form being filled in, a hidden tab, a request of its own.
+  function live() {
+    let waiting = false;
+    let running = false;
+    let overtaken = false;
+    let debounce = 0;
+    let burst = 0;
+    let before = null;
+
+    // Looked up each time: a history restore replaces the body's children.
+    function say(text) {
+      let note = document.getElementById("live-note");
+      if (!note) {
+        note = document.createElement("div");
+        note.id = "live-note";
+        note.className = "live-note";
+        note.setAttribute("role", "status");
+        document.body.append(note);
+      }
+      note.textContent = text;
+    }
+    // A live region must exist, empty, before its first message is announced.
+    say("");
+
+    // A browser without :popover-open throws on the selector; it has no
+    // popovers open either.
+    function popoverOpen() {
+      try {
+        return Boolean(document.querySelector("#page [popover]:popover-open"));
+      } catch {
+        return false;
+      }
+    }
+
+    // A form someone is filling in, which a swap would throw away. One that
+    // is open but untouched and unfocused is not held: the refresh brings it
+    // back with the item's new values.
+    function held() {
+      const active = document.activeElement;
+      if (popoverOpen()) return true;
+      for (const form of document.querySelectorAll("#page form")) {
+        if (form.getAttribute("role") === "search") {
+          const q = form.querySelector("input[type=search]");
+          if (q && q === active && q.value !== q.defaultValue) return true;
+          continue;
+        }
+        if ((form.dataset.uploads || "0") !== "0") return true;
+        const fields = form.querySelectorAll("input[type=text], textarea");
+        if (!fields.length) continue;
+        if (active && (form.contains(active) || active.form === form)) return true;
+        if ([...fields].some((f) => f.value !== f.defaultValue)) return true;
+      }
+      return false;
+    }
+
+    function attempt() {
+      if (!waiting || running || debounce || document.hidden) return;
+      if (document.querySelector(".htmx-request, .htmx-swapping, .htmx-settling")) return;
+      if (held()) {
+        say("Updates waiting");
+        return;
+      }
+      refresh();
+    }
+    const poke = () => setTimeout(attempt);
+
+    // A burst, an agent filing ten items say, becomes one refresh, and a
+    // steady trickle still refreshes every two seconds.
+    function arrive() {
+      waiting = true;
+      clearTimeout(debounce);
+      burst = burst || Date.now();
+      debounce = setTimeout(
+        () => {
+          debounce = 0;
+          burst = 0;
+          attempt();
+        },
+        Math.max(0, Math.min(300, burst + 2000 - Date.now())),
+      );
+    }
+
+    function refresh() {
+      waiting = false;
+      running = true;
+      overtaken = false;
+      say("");
+      htmx
+        .ajax("GET", location.pathname + location.search, {
+          target: "#page",
+          select: "#page",
+          swap: "outerHTML",
+          headers: { [liveHeader]: "1" },
+        })
+        .then(settle, () => {})
+        .finally(() => {
+          running = false;
+          poke();
+        });
+    }
+
+    document.addEventListener("htmx:beforeRequest", (e) => {
+      if (running && !isLive(e.detail.requestConfig)) overtaken = true;
+    });
+
+    // A failed refresh swaps nothing and is not retried: the next change, or
+    // the stream reconnecting, brings another.
+    document.addEventListener("htmx:beforeSwap", (e) => {
+      const d = e.detail;
+      if (!isLive(d.requestConfig) || !d.shouldSwap) return;
+      if (overtaken || held()) {
+        d.shouldSwap = false;
+        waiting = true;
+        return;
+      }
+      const doc = new DOMParser().parseFromString(d.serverResponse, "text/html");
+      const page = doc.getElementById("page");
+      if (!page || page.dataset.asset !== asset) {
+        e.preventDefault();
+        location.reload();
+        return;
+      }
+      // Only #page goes in: the toast a URL like ?did=closed carries was
+      // shown when it happened, and autofocus would pull focus into a form
+      // no one is using.
+      for (const el of page.querySelectorAll("[autofocus]")) el.removeAttribute("autofocus");
+      const title = doc.querySelector("title");
+      d.serverResponse = (title ? title.outerHTML : "") + page.outerHTML;
+      before = snapshot();
+    });
+
+    function snapshot() {
+      const active = document.activeElement;
+      const drawer = document.querySelector("#page .drawer .body");
+      return {
+        scroll: drawer ? drawer.scrollTop : 0,
+        search: Boolean(active && active.matches("#page input[type=search]")),
+      };
+    }
+
+    // What the swap took is put back: the drawer's scroll, the search field's
+    // focus.
+    function settle() {
+      const was = before;
+      before = null;
+      if (!was) return;
+      const drawer = document.querySelector("#page .drawer .body");
+      if (drawer) drawer.scrollTop = was.scroll;
+      const q = was.search && document.querySelector("#page input[type=search]");
+      if (q) {
+        q.focus({ preventScroll: true });
+        q.setSelectionRange(q.value.length, q.value.length);
+      }
+    }
+
+    document.addEventListener("htmx:afterRequest", poke);
+    document.addEventListener("htmx:afterSettle", poke);
+    document.addEventListener("focusout", poke);
+    // toggle does not bubble, and closing a popover moves no focus
+    document.addEventListener("toggle", poke, true);
+
+    // The browser reconnects a dropped stream by itself, and changes made
+    // while it was down were never sent, so each reconnect refreshes once. A
+    // stream the server refused, with 204 when signed out or a proxy's error
+    // during a deploy, is closed for good, and EventSource cannot say which.
+    // A refresh with each reconnect attempt finds out: htmx takes a
+    // signed-out page to the login page whole, and a down server costs one
+    // failed request per attempt.
+    let source = null;
+    let opened = false;
+    let backoff = 1000;
+    let retry = 0;
+    function connect() {
+      retry = 0;
+      if (source || document.hidden) return;
+      const s = new EventSource("/events");
+      source = s;
+      s.onopen = () => {
+        backoff = 1000;
+        if (opened) arrive();
+        opened = true;
+      };
+      s.onmessage = arrive;
+      s.onerror = () => {
+        if (s.readyState !== EventSource.CLOSED) return;
+        source = null;
+        arrive();
+        retry = setTimeout(connect, backoff);
+        backoff = Math.min(backoff * 2, 60000);
+      };
+    }
+    connect();
+
+    // Over HTTP/1.1 a browser opens at most six connections to a host and
+    // each stream holds one, so a hidden tab lets its stream go rather than
+    // starve the tab in front. Coming back reconnects, which refreshes.
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        clearTimeout(retry);
+        if (source) source.close();
+        source = null;
+      } else {
+        connect();
+      }
+      poke();
+    });
+  }
 })();

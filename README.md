@@ -51,8 +51,8 @@ curl -s http://127.0.0.1:8340/mcp \
        "arguments":{"title":"my first item","source":"README quick start"}}}'
 ```
 
-Refresh the page — the item is there. That is the whole loop: agents POST in,
-you review on the page.
+The item appears on the page within a second, with no reload. That is the whole
+loop: agents POST in, you review on the page.
 
 ## Tokens and roles
 
@@ -201,8 +201,18 @@ place with [htmx](https://htmx.org), which ships inside the binary: nothing
 reloads, and opening or closing an entry keeps the list where you scrolled it.
 Every view still has its own URL, which renders the whole page on its own, so the
 back button works and you can paste the URL to someone. One more small script
-uploads images (see [Images](#images)). Without JavaScript, every link and form
-still works as a normal page load.
+uploads images (see [Images](#images)) and keeps the page current. Without
+JavaScript, every link and form still works as a normal page load, and you
+reload to see changes.
+
+The page stays current by itself. When an agent files, edits or closes an item,
+or you change one on another device, every open page updates within about a
+second. A page never updates while
+you are typing in one of its forms: a small "Updates waiting" note appears
+instead, and the update comes when you save, cancel, or leave the form
+unchanged. A page in a background tab updates when you come back to it. If the
+server restarts, the page reconnects and updates once.
+
 Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope
 with nothing open does not exist on the page, but the Done and Dropped tabs still
