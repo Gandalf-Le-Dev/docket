@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -449,6 +450,9 @@ func (h *Handler) imageBlocks(body string) []map[string]any {
 		}
 		mime, data, err := h.Store.GetImage(id)
 		if err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("mcp: read image %d: %v", id, err)
+			}
 			continue
 		}
 		size := base64.StdEncoding.EncodedLen(len(data))
