@@ -214,6 +214,12 @@ someone. The `#<id>` in the drawer's header opens the entry's own
 page at `/todo/<id>`, with the same header and tabs as the list. A click anywhere
 outside the drawer closes it.
 
+What an action did shows for a few seconds in a small message at the foot of the
+window. After Done or Drop it has an Undo button, which puts the entry back exactly
+as it was, body included. Undo works for a day, until anything else changes the entry.
+Reopen, on a closed entry, is different: it keeps the verdict in the body as
+history.
+
 Every form opens in place, from a URL like the drawer. New entry puts its form in
 the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer or
 on its page (`do=edit`, `do=drop`). Rename turns a panel's name into an input

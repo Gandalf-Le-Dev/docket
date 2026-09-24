@@ -13,7 +13,6 @@
   {{template "header" .}}
   {{template "nav" .}}
 </div>
-{{template "flash" .}}
 {{if and .Error (not .New) (not .Open)}}<div class="error">{{.Error}}</div>{{end}}
 
 {{if or .Left .Right}}
@@ -47,6 +46,7 @@
 {{if .New}}{{template "new-drawer" .}}
 {{else}}{{with .Open}}{{template "drawer" dict "T" . "S" $}}{{end}}{{end}}
 </div>
+{{template "toasts" .}}
 </body>
 </html>
 

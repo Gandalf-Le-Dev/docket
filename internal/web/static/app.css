@@ -213,10 +213,6 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border: var(--hairline) solid var(--border); background: var(--surface-raised);
   font-size: 12px; font-weight: 500; color: var(--ink-muted); text-decoration: none; white-space: nowrap; }
 .pill--on { border-color: var(--ink); color: var(--ink); padding-right: var(--space-2); }
-.flash { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
-  margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
-  background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 14px; }
-.flash form { display: inline; }
 .error { margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
   border: var(--hairline) solid var(--danger); color: var(--danger);
   border-radius: var(--radius-md); font-size: 14px; }
@@ -265,6 +261,10 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .compact .entry .title { font-size: 14px; line-height: 20px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .compact .entry .src, .compact .entry .reason { display: none; }
+/* the row an action takes out of the list folds away while its swap waits */
+.htmx-swapping .entry.on { interpolate-size: allow-keywords; overflow: hidden;
+  animation: leave 200ms ease-in forwards; }
+@keyframes leave { to { height: 0; padding-top: 0; padding-bottom: 0; opacity: 0; } }
 
 /* --- drawer: a floating layer, so it gets the overlay shadow --- */
 .with-drawer { display: flex; align-items: flex-start; }
@@ -331,6 +331,21 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .text img, .verdict img { display: block; max-width: 100%; height: auto; margin: var(--space-2) 0;
   border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
 
+/* --- toasts: what an action did, pinned where the list's scroll cannot hide it --- */
+.toasts { position: fixed; left: var(--space-5); bottom: var(--space-5); z-index: 1;
+  max-width: calc(100vw - 2 * var(--space-5)); }
+.toast { display: flex; gap: var(--space-3); align-items: center; min-height: 44px;
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
+  background: var(--surface-raised); border: var(--hairline) solid var(--border);
+  border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); font-size: 14px;
+  animation: toast-in 160ms ease-out, toast-out 160ms ease-in 5840ms forwards; }
+/* a pointer or focus on the toast stops its clock, so Undo never runs out
+   from under someone reaching for it (WCAG 2.2.1) */
+.toast:hover, .toast:focus-within { animation-play-state: paused; }
+.toast form { display: inline; }
+@keyframes toast-in { from { opacity: 0; transform: translateY(var(--space-2)); } }
+@keyframes toast-out { to { opacity: 0; visibility: hidden; } }
+
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
 .form textarea:has(+ .attach:not([hidden])) { margin-bottom: var(--space-2); }
@@ -361,8 +376,11 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
   .doc { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
   .facts { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline) solid var(--border); }
   .nav .filters .ui, .nav .seg { display: none; }
+  .toasts { left: var(--space-4); bottom: var(--space-4); max-width: calc(100vw - 2 * var(--space-4)); }
 }
 @media (prefers-reduced-motion: reduce) {
   .btn, .entry, .panel > header .tools { transition-duration: 1ms; }
+  .htmx-swapping .entry.on { animation-duration: 1ms; }
+  .toast { animation: toast-out 1ms 6s forwards; }
   .wm .o .lid { animation: none; }
 }

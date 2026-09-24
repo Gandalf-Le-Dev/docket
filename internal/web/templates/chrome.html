@@ -90,17 +90,24 @@
   </nav>
 {{end}}
 
-{{define "flash"}}{{with .Flash}}
-  <div class="flash" role="status">
-    <span>{{.Text}}</span>
-    {{if .Undo}}<form method="post" action="{{.Undo}}">
-      <input type="hidden" name="id" value="{{.ID}}">
-      <input type="hidden" name="back_state" value="{{.BackState}}">
-      <input type="hidden" name="back_scope" value="{{.BackScope}}">
-      <button type="submit" class="btn--quiet">Reopen</button>
-    </form>{{end}}
-  </div>
-{{end}}{{end}}
+{{/* The live region sits outside #page, so no swap replaces it and a screen
+     reader hears each toast put into it. A response carries its toast out of
+     band; one without a toast leaves the last one to run out its time. */}}
+{{define "toasts"}}<div id="toasts" class="toasts" role="status">
+{{- with .Flash}}<div hx-swap-oob="innerHTML:#toasts"><div class="toast">
+  <span>{{.Text}}</span>
+  {{- if .Undo}}
+  <form method="post" action="{{.Undo}}" hx-swap="outerHTML show:none">
+    <input type="hidden" name="id" value="{{.ID}}">
+    {{with .BackID}}<input type="hidden" name="back_id" value="{{.}}">{{end}}
+    <input type="hidden" name="back_state" value="{{.BackState}}">
+    <input type="hidden" name="back_scope" value="{{.BackScope}}">
+    <input type="hidden" name="back_q" value="{{.BackQuery}}">
+    <button type="submit" class="btn--quiet">Undo</button>
+  </form>
+  {{- end}}
+</div></div>{{end -}}
+</div>{{end}}
 
 {{/* where a form posted from the list sends you back to */}}
 {{define "back"}}

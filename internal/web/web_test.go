@@ -536,7 +536,7 @@ func TestActionsReportBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = readAll(t, resp)
-	if !strings.Contains(body, "Dropped #1.") || !strings.Contains(body, `action="/todo/reopen"`) {
+	if !strings.Contains(body, "Dropped.") || !strings.Contains(body, `action="/todo/undo"`) {
 		t.Fatalf("drop flash missing its reverse:\n%s", body)
 	}
 
@@ -566,6 +566,70 @@ func TestActionsReportBack(t *testing.T) {
 	if !strings.Contains(body, `<b>Done.</b> shipped`) ||
 		!strings.Contains(body, `— closed (dropped): not now`) {
 		t.Fatalf("verdict rendering:\n%s", body)
+	}
+}
+
+// Done and Drop answer with a toast in the live region, whose Undo puts the
+// entry back exactly and lands where the close came from.
+func TestUndoFromToast(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("undo me", "why\n\n— closed (done): an older verdict", "pilot", "test", "t")
+	before, _ := s.GetTodo(id)
+
+	resp, err := c.PostForm(srv.URL+"/todo/close", url.Values{
+		"id": {"1"}, "outcome": {"dropped"}, "reason": {"not now"},
+		"back_state": {"open"}, "back_scope": {"pilot"}, "back_q": {"undo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	toast := body[strings.Index(body, `<div id="toasts" class="toasts" role="status">`):]
+	for _, want := range []string{
+		`<div hx-swap-oob="innerHTML:#toasts"><div class="toast">`,
+		`<span>Dropped.</span>`,
+		`action="/todo/undo"`,
+		`name="back_scope" value="pilot"`,
+		`name="back_q" value="undo"`,
+		`>Undo</button>`,
+	} {
+		if !strings.Contains(toast, want) {
+			t.Fatalf("toast missing %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, `class="entry`) {
+		t.Fatalf("dropped entry still listed:\n%s", body)
+	}
+
+	resp, err = c.PostForm(srv.URL+"/todo/undo", url.Values{
+		"id": {"1"}, "back_state": {"open"}, "back_scope": {"pilot"}, "back_q": {"undo"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body = readAll(t, resp)
+	if q := resp.Request.URL.Query(); q.Get("open") != "1" || q.Get("scope") != "pilot" || q.Get("q") != "undo" ||
+		!strings.Contains(body, "Restored #1.") || !strings.Contains(body, `class="entry on"`) {
+		t.Fatalf("undo landed on %s:\n%s", resp.Request.URL, body)
+	}
+	if got, _ := s.GetTodo(id); got != before {
+		t.Fatalf("undo is not exact:\n got  %+v\n want %+v", got, before)
+	}
+
+	// Closed on its own page, the entry comes back there; a second undo has
+	// nothing left to reverse and says so.
+	c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "back_id": {"1"}})
+	for i, want := range []string{"Restored #1.", "cannot be undone"} {
+		resp, err = c.PostForm(srv.URL+"/todo/undo", url.Values{"id": {"1"}, "back_id": {"1"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		body = readAll(t, resp)
+		if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, want) {
+			t.Fatalf("undo %d landed on %s without %q:\n%s", i+1, resp.Request.URL, want, body)
+		}
 	}
 }
 

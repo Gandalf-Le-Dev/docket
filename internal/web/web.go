@@ -10,9 +10,12 @@
 // the same whole page, swaps in its #page and pushes the URL, so a click never
 // reloads and, where hx-swap says show:none, keeps the list's scroll. The
 // server renders no fragments; the one thing it does for htmx is send a
-// signed-out request to the login page whole (see toLogin). The page's own
-// script, static/app.js, uploads images pasted or dropped into a body. Without
-// either script every link and form still works as a page load.
+// signed-out request to the login page whole (see toLogin). What an action
+// did shows as a toast, carried out of band into a live region outside #page;
+// Done's and Drop's carry an Undo that puts the entry back exactly, verdict
+// note and all (store.UndoClose). The page's own script, static/app.js,
+// uploads images pasted or dropped into a body. Without either script every
+// link and form still works as a page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
@@ -89,6 +92,7 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /add", sameOrigin(h.requireReview(h.add)))
 	h.mux.HandleFunc("POST /todo/close", sameOrigin(h.requireReview(h.close)))
 	h.mux.HandleFunc("POST /todo/reopen", sameOrigin(h.requireReview(h.reopen)))
+	h.mux.HandleFunc("POST /todo/undo", sameOrigin(h.requireReview(h.undo)))
 	h.mux.HandleFunc("POST /todo/update", sameOrigin(h.requireReview(h.update)))
 	h.mux.HandleFunc("POST /scope/rename", sameOrigin(h.requireReview(h.renameScope)))
 	h.mux.HandleFunc("POST /image", h.requireReview(h.uploadImage))
@@ -426,8 +430,9 @@ func newTodoView(t store.Todo, focus bool, backState, backScope string) todoView
 	return v
 }
 
-// flash is what the page says after an action, with the reverse beside it.
-// The Back fields tell the reverse where to land, like any action's form.
+// flash is what the page says after an action, as a toast, with the reverse
+// beside it. The Back fields tell the reverse where to land, like any
+// action's form.
 type flash struct {
 	Text      string
 	ID        int64
@@ -435,19 +440,22 @@ type flash struct {
 	BackID    int64
 	BackState string
 	BackScope string
+	BackQuery string
 }
 
-func flashFrom(q url.Values, backID int64, backState, backScope string) *flash {
+func flashFrom(q url.Values, backID int64, backState, backScope, backQuery string) *flash {
 	id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
-	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope}
+	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope, BackQuery: backQuery}
 	switch q.Get("did") {
 	case "closed":
-		f.Undo = "/todo/reopen"
+		f.Undo = "/todo/undo"
 		if q.Get("outcome") == "dropped" {
-			f.Text = fmt.Sprintf("Dropped #%d.", id)
+			f.Text = "Dropped."
 		} else {
-			f.Text = fmt.Sprintf("Closed #%d as done.", id)
+			f.Text = "Done."
 		}
+	case "restored":
+		f.Text = fmt.Sprintf("Restored #%d.", id)
 	case "reopened":
 		f.Text = fmt.Sprintf("Reopened #%d.", id)
 	case "added":
@@ -597,7 +605,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			Counts:  counts,
 			Scopes:  summaries,
 			Hues:    scopeHues(summaries),
-			Flash:   flashFrom(q, 0, state, scope),
+			Flash:   flashFrom(q, 0, state, scope, search),
 			Error:   q.Get("err"),
 			Asset:   h.assetVer,
 			Here:    r.URL.RequestURI(),
@@ -678,7 +686,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Counts: counts,
 			Scopes: scopes,
 			Hues:   scopeHues(scopes),
-			Flash:  flashFrom(q, t.ID, "", ""),
+			Flash:  flashFrom(q, t.ID, "", "", ""),
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
 			Here:   r.URL.RequestURI(),
@@ -769,6 +777,20 @@ func (h *Handler) reopen(w http.ResponseWriter, r *http.Request) {
 		_, err = h.store.UpdateTodo(id, store.TodoUpdate{State: &open})
 	}
 	back(w, r, err, did("reopened", id))
+}
+
+// undo reverses a close from its toast: the entry comes back exactly as it
+// was, in the drawer or on the page it was closed from.
+func (h *Handler) undo(w http.ResponseWriter, r *http.Request) {
+	id, err := formID(r)
+	if err == nil {
+		_, err = h.store.UndoClose(id)
+	}
+	d := did("restored", id)
+	if r.FormValue("back_id") == "" {
+		d.Set("open", strconv.FormatInt(id, 10))
+	}
+	back(w, r, err, d)
 }
 
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {

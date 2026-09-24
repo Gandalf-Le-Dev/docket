@@ -10,7 +10,6 @@
   {{template "header" .}}
   {{template "nav" .}}
 </div>
-{{template "flash" .}}
 {{if .Error}}<div class="error">{{.Error}}</div>{{end}}
 
 <div class="page">
@@ -90,5 +89,6 @@
 </div>
 {{template "scopes-list" .}}
 </div>
+{{template "toasts" .}}
 </body>
 </html>

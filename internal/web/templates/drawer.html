@@ -1,3 +1,5 @@
+{{/* Done, Drop and Reopen take the entry out of the list: their swap waits
+     long enough for its row to fold away (app.css, .htmx-swapping) */}}
 {{define "drawer"}}{{$t := .T}}{{$s := .S}}
 {{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
 <aside class="drawer" aria-label="Entry {{$t.ID}}" hx-swap="outerHTML show:none">
@@ -43,7 +45,7 @@
 
   <footer>
     {{if eq $s.Do "drop"}}
-      <form class="drop" method="post" action="/todo/close">
+      <form class="drop" method="post" action="/todo/close" hx-swap="outerHTML show:none swap:200ms">
         <input type="hidden" name="id" value="{{$t.ID}}">
         <input type="hidden" name="outcome" value="dropped">
         {{template "back" $s}}
@@ -53,7 +55,7 @@
       </form>
       <a class="btn btn--ghost" href="{{$here}}">Cancel</a>
     {{else if eq $t.State "open"}}
-      <form method="post" action="/todo/close">
+      <form method="post" action="/todo/close" hx-swap="outerHTML show:none swap:200ms">
         <input type="hidden" name="id" value="{{$t.ID}}">
         <input type="hidden" name="outcome" value="done">
         {{template "back" $s}}
@@ -62,7 +64,7 @@
       <a class="btn btn--secondary" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "drop"}}">Drop…</a>
       <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
     {{else}}
-      <form method="post" action="/todo/reopen">
+      <form method="post" action="/todo/reopen" hx-swap="outerHTML show:none swap:200ms">
         <input type="hidden" name="id" value="{{$t.ID}}">
         {{template "back" $s}}
         <button type="submit" class="btn btn--secondary">Reopen</button>
