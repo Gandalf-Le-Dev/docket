@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func testStore(t *testing.T) *Store {
@@ -285,6 +286,46 @@ func TestImages(t *testing.T) {
 
 	if _, _, err := s.GetImage(999); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing image: %v", err)
+	}
+}
+
+// setClock pins the store's clock at start and returns a way to move it.
+func setClock(t *testing.T, start time.Time) func(time.Duration) {
+	t.Helper()
+	at := start
+	clock = func() time.Time { return at }
+	t.Cleanup(func() { clock = time.Now })
+	return func(d time.Duration) { at = at.Add(d) }
+}
+
+func seenAt(t *testing.T, s *Store, id int64) string {
+	t.Helper()
+	var seen string
+	if err := s.db.QueryRow("SELECT seen_at FROM image WHERE id = ?", id).Scan(&seen); err != nil {
+		t.Fatal(err)
+	}
+	return seen
+}
+
+// Pasting an image again counts as seeing it now, so an old copy cannot be
+// treated as abandoned under a fresh draft.
+func TestAddImageMarksSeen(t *testing.T) {
+	s := testStore(t)
+	advance := setClock(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	pic := tinyPNG(t, color.Black)
+	id, err := s.AddImage(pic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := seenAt(t, s, id); got != "2026-01-01T00:00:00Z" {
+		t.Fatalf("seen_at on insert = %s", got)
+	}
+	advance(30 * 24 * time.Hour)
+	if again, err := s.AddImage(pic); err != nil || again != id {
+		t.Fatalf("dedupe: %d %v", again, err)
+	}
+	if got := seenAt(t, s, id); got != "2026-01-31T00:00:00Z" {
+		t.Fatalf("seen_at after dedupe = %s", got)
 	}
 }
 

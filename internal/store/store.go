@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS image (
   sha256     TEXT NOT NULL UNIQUE,
   mime       TEXT NOT NULL,
   data       BLOB NOT NULL,
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  seen_at    TEXT NOT NULL
 );
 `
 
@@ -121,7 +122,10 @@ func (s *Store) Ping() error {
 	return s.db.QueryRow("SELECT 1").Scan(&one)
 }
 
-func now() string { return time.Now().UTC().Format(time.RFC3339) }
+// clock is swapped by tests that need time to pass without waiting for it.
+var clock = time.Now
+
+func now() string { return clock().UTC().Format(time.RFC3339) }
 
 // NormalizeScope is the entire scope taxonomy: trim and lowercase.
 func NormalizeScope(scope string) string {
@@ -516,8 +520,10 @@ func (s *Store) AddImage(data []byte) (int64, error) {
 	}
 	sum := sha256.Sum256(data)
 	hash := hex.EncodeToString(sum[:])
-	if _, err := s.db.Exec("INSERT INTO image (sha256, mime, data, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO NOTHING",
-		hash, mime, data, now()); err != nil {
+	ts := now()
+	if _, err := s.db.Exec(`INSERT INTO image (sha256, mime, data, created_at, seen_at) VALUES (?, ?, ?, ?, ?)
+		ON CONFLICT (sha256) DO UPDATE SET seen_at = excluded.seen_at`,
+		hash, mime, data, ts, ts); err != nil {
 		return 0, err
 	}
 	var id int64
