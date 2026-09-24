@@ -439,14 +439,19 @@ const (
 )
 
 // imageBlocks are the images a body shows, as MCP image content, so an agent
-// sees the screenshot rather than a path it cannot fetch. An image too big to
-// include is named in a text block instead, so the agent knows it is there.
+// sees the screenshot rather than a path it cannot fetch. At most
+// maxImageBlocks images are read, oversized ones included, and none once the
+// payload is spent. Whatever is left out is named in one closing text block,
+// so the agent knows it is there.
 func (h *Handler) imageBlocks(body string) []map[string]any {
 	var blocks []map[string]any
-	images, payload := 0, 0
+	var left []string
+	read, payload, spent := 0, 0, false
 	for _, id := range store.ImageRefs(body) {
-		if images == maxImageBlocks {
-			break
+		path := fmt.Sprintf("/image/%d", id)
+		if read == maxImageBlocks || spent {
+			left = append(left, path)
+			continue
 		}
 		mime, data, err := h.Store.GetImage(id)
 		if err != nil {
@@ -455,20 +460,28 @@ func (h *Handler) imageBlocks(body string) []map[string]any {
 			}
 			continue
 		}
+		read++
 		size := base64.StdEncoding.EncodedLen(len(data))
 		if size > maxImageBlockBytes || payload+size > maxImagePayloadBytes {
-			blocks = append(blocks, map[string]any{
-				"type": "text",
-				"text": fmt.Sprintf("image /image/%d left out: too large to include in this result", id),
-			})
+			spent = size <= maxImageBlockBytes
+			left = append(left, path)
 			continue
 		}
-		images++
 		payload += size
 		blocks = append(blocks, map[string]any{
 			"type":     "image",
 			"data":     base64.StdEncoding.EncodeToString(data),
 			"mimeType": mime,
+		})
+	}
+	if len(left) > 0 {
+		noun := "images"
+		if len(left) == 1 {
+			noun = "image"
+		}
+		blocks = append(blocks, map[string]any{
+			"type": "text",
+			"text": fmt.Sprintf("%d %s left out to keep this result small: %s", len(left), noun, strings.Join(left, ", ")),
 		})
 	}
 	return blocks

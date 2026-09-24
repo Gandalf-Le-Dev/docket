@@ -572,9 +572,13 @@ func TestGetIncludesImages(t *testing.T) {
 	if len(res.Content) != 1 {
 		t.Fatalf("todo_list content: %d blocks", len(res.Content))
 	}
+}
 
-	// A body full of screenshots does not flood the agent's context.
-	body = ""
+// A body naming hundreds of images gets a handful of them and one note for
+// the rest, not a block per id.
+func TestGetBoundsManyImages(t *testing.T) {
+	e := newEnv(t)
+	var body string
 	for i := 1; i <= maxImageBlocks+2; i++ {
 		n, err := e.store.AddImage(tinyPNG(t, uint8(i)))
 		if err != nil {
@@ -582,13 +586,35 @@ func TestGetIncludesImages(t *testing.T) {
 		}
 		body += fmt.Sprintf("![image](/image/%d)\n", n)
 	}
-	id, _, _ = e.store.AddTodo("many screenshots", body, "", "test", "t")
-	h, b = modernCall("todo_get", fmt.Sprintf(`{"id":%d}`, id))
-	_, r = e.call(t, e.review, h, b)
-	res.Content = nil
-	json.Unmarshal(r.Result, &res)
-	if len(res.Content) != 1+maxImageBlocks {
+	for n := 1000; n < 1200; n++ {
+		body += fmt.Sprintf("![image](/image/%d)", n)
+	}
+	id, _, err := e.store.AddTodo("many screenshots", body, "", "test", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, b := modernCall("todo_get", fmt.Sprintf(`{"id":%d}`, id))
+	_, r := e.call(t, e.review, h, b)
+	var res struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(r.Result, &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Content) != 1+maxImageBlocks+1 {
 		t.Fatalf("todo_get with many images: %d blocks", len(res.Content))
+	}
+	for i, c := range res.Content[1 : 1+maxImageBlocks] {
+		if c.Type != "image" {
+			t.Fatalf("block %d is %s", i+1, c.Type)
+		}
+	}
+	note := res.Content[len(res.Content)-1]
+	if note.Type != "text" || !strings.HasPrefix(note.Text, "202 images left out") || !strings.HasSuffix(note.Text, "/image/1199") {
+		t.Fatalf("closing note: %q", note.Text)
 	}
 }
 
@@ -624,7 +650,7 @@ func TestGetBoundsImageBytes(t *testing.T) {
 	if err := json.Unmarshal(r.Result, &res); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"text", "image", "text", "image", "text"}
+	want := []string{"text", "image", "image", "text"}
 	if len(res.Content) != len(want) {
 		t.Fatalf("got %d blocks, want %d", len(res.Content), len(want))
 	}
@@ -641,10 +667,8 @@ func TestGetBoundsImageBytes(t *testing.T) {
 	if payload > maxImagePayloadBytes {
 		t.Fatalf("result carries %d bytes of images", payload)
 	}
-	for i, n := range map[int]int64{2: ids[1], 4: ids[3]} {
-		if !strings.Contains(res.Content[i].Text, fmt.Sprintf("/image/%d", n)) {
-			t.Fatalf("block %d does not name the image left out: %q", i, res.Content[i].Text)
-		}
+	if note, want := res.Content[3].Text, fmt.Sprintf("2 images left out to keep this result small: /image/%d, /image/%d", ids[1], ids[3]); note != want {
+		t.Fatalf("closing note = %q, want %q", note, want)
 	}
 }
 
