@@ -25,20 +25,22 @@
     for (const b of submitButtons(form)) b.disabled = busy;
   }
 
+  // insertLine returns exactly what it inserted, so a failed upload can take
+  // back the line breaks along with the placeholder.
   function insertLine(ta, text) {
     const { selectionStart: start, selectionEnd: end, value } = ta;
     const before = start > 0 && value[start - 1] !== "\n" ? "\n" : "";
     const after = value[end] === "\n" ? "" : "\n";
     ta.setRangeText(before + text + after, start, end, "end");
     if (!after) ta.selectionStart = ta.selectionEnd = ta.selectionEnd + 1;
+    return before + text + after;
   }
 
   function replaceText(ta, from, to) {
     const i = ta.value.indexOf(from);
-    if (i < 0) return;
-    let end = i + from.length;
-    if (to === "" && ta.value[end] === "\n") end++;
-    ta.setRangeText(to, i, end, "preserve");
+    if (i < 0) return false;
+    ta.setRangeText(to, i, i + from.length, "preserve");
+    return true;
   }
 
   async function post(file) {
@@ -61,12 +63,13 @@
     for (const file of files) {
       // numbered, so each upload finds its own placeholder whatever order they finish in
       const placeholder = `![Uploading image ${++uploads}…]()`;
-      insertLine(ta, placeholder);
+      const inserted = insertLine(ta, placeholder);
       if (form) setBusy(form, 1);
       post(file)
         .then((markdown) => replaceText(ta, placeholder, markdown))
         .catch((err) => {
-          replaceText(ta, placeholder, "");
+          // the line breaks are left if the text around the placeholder was edited meanwhile
+          replaceText(ta, inserted, "") || replaceText(ta, placeholder, "");
           status.textContent = err.message;
         })
         .finally(() => {
