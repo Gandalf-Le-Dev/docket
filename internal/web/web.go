@@ -136,7 +136,6 @@ func cacheStatic(next http.Handler) http.Handler {
 // scripts' URLs.
 func (h *Handler) AssetVer() string { return h.assetVer }
 
-// fingerprinted is every file a page links with ?v=AssetVer.
 var fingerprinted = []string{"static/app.css", "static/app.js", "static/htmx.min.js"}
 
 // hashAsset fingerprints embedded files so their URLs change when any does.

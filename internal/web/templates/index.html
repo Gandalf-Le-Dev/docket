@@ -5,7 +5,7 @@
   <title>docket</title>
 </head>
 <body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">
-<div id="page" class="with-drawer{{if or .New .Open}} has-drawer{{end}}{{if .Compact}} compact{{end}}">
+<div id="page" data-asset="{{.Asset}}" class="with-drawer{{if or .New .Open}} has-drawer{{end}}{{if .Compact}} compact{{end}}">
 <div class="main">
 {{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"
   hx-swap="outerHTML show:none"></a>{{end}}

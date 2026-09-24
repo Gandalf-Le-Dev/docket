@@ -152,17 +152,29 @@
     if (top < 0 || top > window.innerHeight) shown.scrollIntoView();
   });
 
-  // A boosted link can lead off the page this script knows, to /healthz say;
-  // with no #page in the answer the swap would blank the screen, so the
-  // browser loads it as the page it is. A failed one (a pasted /todo/999)
-  // htmx would not swap at all, so the browser loads that too and shows the
-  // server's error. Posts come back to a page and say what went wrong there.
+  // The fingerprint this page's stylesheet and scripts were loaded with. A
+  // swap never touches <head>, so after a deploy only a load brings new ones.
+  const asset = new URL(document.currentScript.src).searchParams.get("v");
+
+  // Some answers must be loaded as a page rather than swapped: one from a
+  // later deploy, whose #page may need the new stylesheet and scripts; a
+  // boosted link that led off the pages this script knows, to /healthz say,
+  // which has no #page and would blank the screen; and a failed link (a
+  // pasted /todo/999), which htmx would not swap at all, so the browser shows
+  // the server's error. Posts come back to a page and say what went wrong there.
   document.addEventListener("htmx:beforeSwap", (e) => {
     const { boosted, requestConfig, xhr, serverResponse, isError } = e.detail;
-    if (!boosted || requestConfig.verb !== "get") return;
-    if (!isError && / id="page"/.test(serverResponse)) return;
+    if (!boosted) return;
+    const page = / id="page" data-asset="([^"]*)"/.exec(serverResponse);
+    const stale = page && !isError && page[1] !== asset;
+    const offPage = requestConfig.verb === "get" && (isError || !page);
+    if (!stale && !offPage) return;
     e.preventDefault();
     location.href = xhr.responseURL || requestConfig.path;
+  });
+  document.addEventListener("htmx:historyRestore", () => {
+    const page = document.getElementById("page");
+    if (page && page.dataset.asset !== asset) location.reload();
   });
 
   // Capture, and stop there: htmx submits a boosted form from its own

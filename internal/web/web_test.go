@@ -850,11 +850,13 @@ func TestPagesSwapInPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	keep := `hx-swap="outerHTML show:none"`
+	// app.js compares it with what it was loaded with, to reload after a deploy.
+	page := `<div id="page" data-asset="` + hashAsset(fingerprinted...) + `"`
 	for path, wants := range map[string][]string{
-		"/":        {`id="page"`, `<section class="panel" ` + keep, `action="/theme" aria-label="Theme" hx-boost="false"`},
+		"/":        {page, `<section class="panel" ` + keep, `action="/theme" aria-label="Theme" hx-boost="false"`},
 		"/?open=1": {`<aside class="drawer" aria-label="Entry 1" ` + keep, `aria-hidden="true"` + "\n  " + keep},
 		"/?new=1":  {`<aside class="drawer" aria-label="New entry" ` + keep},
-		"/todo/1":  {`id="page"`},
+		"/todo/1":  {page},
 	} {
 		resp, err := c.Get(srv.URL + path)
 		if err != nil {
@@ -953,7 +955,7 @@ func TestViewSwitches(t *testing.T) {
 	}
 
 	resp, body := post("/density", "compact", "/?scope=pilot")
-	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `<div id="page" class="with-drawer compact">`) ||
+	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `class="with-drawer compact">`) ||
 		!strings.Contains(body, `<a class="name tint hue-0"`) {
 		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
 	}
