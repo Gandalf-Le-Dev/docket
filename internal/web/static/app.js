@@ -154,10 +154,13 @@
 
   // A boosted link can lead off the page this script knows, to /healthz say;
   // with no #page in the answer the swap would blank the screen, so the
-  // browser loads it as the page it is.
+  // browser loads it as the page it is. A failed one (a pasted /todo/999)
+  // htmx would not swap at all, so the browser loads that too and shows the
+  // server's error. Posts come back to a page and say what went wrong there.
   document.addEventListener("htmx:beforeSwap", (e) => {
     const { boosted, requestConfig, xhr, serverResponse, isError } = e.detail;
-    if (!boosted || requestConfig.verb !== "get" || isError || / id="page"/.test(serverResponse)) return;
+    if (!boosted || requestConfig.verb !== "get") return;
+    if (!isError && / id="page"/.test(serverResponse)) return;
     e.preventDefault();
     location.href = xhr.responseURL || requestConfig.path;
   });
