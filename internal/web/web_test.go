@@ -395,21 +395,24 @@ func TestImageServe(t *testing.T) {
 		}
 	}
 
-	// The item page draws the image; the list row shows a word in its place.
+	// The item page and the drawer draw the body's and the verdict's images;
+	// the list row shows a word in the verdict's place.
 	tid, _, _ := s.AddTodo("with a shot", "look:\n![image]("+path+")", "", "test", "t")
 	s.CloseTodo(tid, "done", "fixed, see ![after]("+path+")")
-	resp, err = c.Get(srv.URL + fmt.Sprintf("/todo/%d", tid))
-	if err != nil {
-		t.Fatal(err)
+	var body string
+	for _, page := range []string{fmt.Sprintf("/todo/%d", tid), fmt.Sprintf("/?state=done&open=%d", tid)} {
+		resp, err = c.Get(srv.URL + page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body = readAll(t, resp)
+		for _, alt := range []string{"image", "after"} {
+			if !strings.Contains(body, `<img src="`+path+`" alt="`+alt+`" loading="lazy">`) {
+				t.Fatalf("%s lacks the %s image:\n%s", page, alt, body)
+			}
+		}
 	}
-	if body := readAll(t, resp); !strings.Contains(body, `<img src="`+path+`" alt="image" loading="lazy">`) {
-		t.Fatalf("item page lacks the image:\n%s", body)
-	}
-	resp, err = c.Get(srv.URL + "/?state=done")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if body := readAll(t, resp); !strings.Contains(body, `<span class="reason">fixed, see [image]</span>`) {
+	if !strings.Contains(body, `<span class="reason">fixed, see [image]</span>`) {
 		t.Fatalf("list row shows the marker:\n%s", body)
 	}
 }

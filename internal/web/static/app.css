@@ -323,7 +323,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .drawer .facts { margin: 0 0 var(--space-5); padding: 0; border: 0; gap: var(--space-1) var(--space-4); }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 
-.text img { display: block; max-width: 100%; height: auto; margin: var(--space-2) 0;
+.text img, .verdict img { display: block; max-width: 100%; height: auto; margin: var(--space-2) 0;
   border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
 
 /* --- forms and empty states --- */
