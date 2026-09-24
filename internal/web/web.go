@@ -82,19 +82,19 @@ func NewHandler(s *store.Store) *Handler {
 	}
 	h.mux.Handle("GET /static/", http.StripPrefix("/", cacheStatic(http.FileServer(http.FS(staticFS)))))
 	h.mux.HandleFunc("GET /login", h.loginForm)
-	h.mux.HandleFunc("POST /login", h.login)
-	h.mux.HandleFunc("POST /logout", h.logout)
+	h.mux.HandleFunc("POST /login", sameOrigin(h.login))
+	h.mux.HandleFunc("POST /logout", sameOrigin(h.logout))
 	h.mux.HandleFunc("GET /{$}", h.requireReview(h.index))
 	h.mux.HandleFunc("GET /todo/{id}", h.requireReview(h.item))
-	h.mux.HandleFunc("POST /add", h.requireReview(h.add))
-	h.mux.HandleFunc("POST /todo/close", h.requireReview(h.close))
-	h.mux.HandleFunc("POST /todo/reopen", h.requireReview(h.reopen))
-	h.mux.HandleFunc("POST /todo/update", h.requireReview(h.update))
-	h.mux.HandleFunc("POST /scope/rename", h.requireReview(h.renameScope))
+	h.mux.HandleFunc("POST /add", sameOrigin(h.requireReview(h.add)))
+	h.mux.HandleFunc("POST /todo/close", sameOrigin(h.requireReview(h.close)))
+	h.mux.HandleFunc("POST /todo/reopen", sameOrigin(h.requireReview(h.reopen)))
+	h.mux.HandleFunc("POST /todo/update", sameOrigin(h.requireReview(h.update)))
+	h.mux.HandleFunc("POST /scope/rename", sameOrigin(h.requireReview(h.renameScope)))
 	h.mux.HandleFunc("POST /image", h.requireReview(h.uploadImage))
 	h.mux.HandleFunc("GET /image/{id}", h.requireReview(h.image))
-	h.mux.HandleFunc("POST /density", h.requireReview(pref(densityCookie, "compact")))
-	h.mux.HandleFunc("POST /theme", pref(themeCookie, "light", "dark"))
+	h.mux.HandleFunc("POST /density", sameOrigin(h.requireReview(pref(densityCookie, "compact"))))
+	h.mux.HandleFunc("POST /theme", sameOrigin(pref(themeCookie, "light", "dark")))
 	return h
 }
 
@@ -306,6 +306,26 @@ func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		toLogin(w, r)
+	}
+}
+
+// crossSite reports a request another site made. The session cookie is
+// SameSite=Lax, which still lets a sibling subdomain post here; only this
+// site's own pages and script have any business doing so. Browsers too old to
+// send Sec-Fetch-Site are let through, as SameSite already covers them.
+func crossSite(r *http.Request) bool {
+	site := r.Header.Get("Sec-Fetch-Site")
+	return site != "" && site != "same-origin"
+}
+
+// sameOrigin refuses a cross-site post before it can change anything.
+func sameOrigin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if crossSite(r) {
+			http.Error(w, "cross-site request refused", http.StatusForbidden)
+			return
+		}
+		next(w, r)
 	}
 }
 
@@ -779,9 +799,8 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // uploadImage takes one image from the body editor's script and answers with
 // the marker to put in the body.
 func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
-	// The session cookie is SameSite=Lax, which still lets a sibling subdomain
-	// post here; only this page's own script has any business doing so.
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+	// Checked here rather than by sameOrigin, so the script gets its JSON.
+	if crossSite(r) {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-site upload refused"})
 		return
 	}

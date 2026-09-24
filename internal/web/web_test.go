@@ -393,6 +393,46 @@ func TestImageUpload(t *testing.T) {
 	}
 }
 
+// Every form post, not only the image upload, refuses another site: a
+// sibling subdomain still carries the SameSite=Lax cookie.
+func TestCrossSitePostsRefused(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("keep me open", "", "", "test", "t")
+	post := func(path, site string) *http.Response {
+		t.Helper()
+		form := url.Values{"id": {"1"}, "title": {"planted"}}.Encode()
+		req, _ := http.NewRequest("POST", srv.URL+path, strings.NewReader(form))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Sec-Fetch-Site", site)
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	for _, site := range []string{"same-site", "cross-site"} {
+		for _, path := range []string{"/todo/close", "/add", "/logout"} {
+			if resp := post(path, site); resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("%s post to %s: %d", site, path, resp.StatusCode)
+			}
+		}
+	}
+	if got, _ := s.GetTodo(id); got.State != "open" {
+		t.Fatalf("cross-site close went through: %+v", got)
+	}
+	if todos, _ := s.ListTodos("all", "", ""); len(todos) != 1 {
+		t.Fatalf("cross-site add went through: %+v", todos)
+	}
+	// The same post from the page itself goes through.
+	resp := post("/todo/close", "same-origin")
+	if got, _ := s.GetTodo(id); resp.StatusCode != http.StatusOK || got.State != "done" {
+		t.Fatalf("same-origin close: %d %+v", resp.StatusCode, got)
+	}
+}
+
 func TestImageServe(t *testing.T) {
 	srv, s, review, _ := newEnv(t)
 	c := client(t)
