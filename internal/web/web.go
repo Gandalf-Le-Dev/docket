@@ -67,7 +67,8 @@ type Handler struct {
 	assetVer string // content hash, so a deploy busts the year-long cache
 	tmpl     *template.Template
 	mux      *http.ServeMux
-	serve    http.Handler // mux, behind the cross-origin check
+	serve    http.Handler  // mux, behind the cross-origin check
+	beat     time.Duration // heartbeat, shortened by tests
 }
 
 func NewHandler(s *store.Store) *Handler {
@@ -82,7 +83,8 @@ func NewHandler(s *store.Store) *Handler {
 			"query":     query,
 			"dict":      dict,
 		}).ParseFS(templateFS, "templates/*.html")),
-		mux: http.NewServeMux(),
+		mux:  http.NewServeMux(),
+		beat: heartbeat,
 	}
 	h.mux.Handle("GET /static/", http.StripPrefix("/", cacheStatic(http.FileServer(http.FS(staticFS)))))
 	h.mux.HandleFunc("GET /login", h.loginForm)
@@ -90,6 +92,7 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /logout", h.logout)
 	h.mux.HandleFunc("GET /{$}", h.requireReview(h.index))
 	h.mux.HandleFunc("GET /todo/{id}", h.requireReview(h.item))
+	h.mux.HandleFunc("GET /events", h.events)
 	h.mux.HandleFunc("POST /add", h.requireReview(h.add))
 	h.mux.HandleFunc("POST /todo/close", h.requireReview(h.close))
 	h.mux.HandleFunc("POST /todo/reopen", h.requireReview(h.reopen))
@@ -319,15 +322,17 @@ func (h *Handler) render(w http.ResponseWriter, name string, data any) {
 // must never read.
 func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie(cookieName)
-		if err == nil {
-			if _, role, err := h.store.Auth(c.Value); err == nil && role == "review" {
-				next(w, r)
-				return
-			}
+		if h.signedIn(cookie(r, cookieName)) {
+			next(w, r)
+			return
 		}
 		toLogin(w, r)
 	}
+}
+
+func (h *Handler) signedIn(token string) bool {
+	_, role, err := h.store.Auth(token)
+	return err == nil && role == "review"
 }
 
 // toLogin sends a signed-out browser to the login page. htmx would follow a
