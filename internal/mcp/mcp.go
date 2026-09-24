@@ -344,7 +344,7 @@ var reviewTools = []toolDef{
 	},
 	{
 		Name:        "todo_get",
-		Description: "Fetch one backlog item by id.",
+		Description: "Fetch one backlog item by id. Images the body shows as ![alt](/image/N) come back as image content after the text, up to 5.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {"id": {"type": "integer"}},
@@ -417,13 +417,39 @@ func toolError(w http.ResponseWriter, id json.RawMessage, msg string) {
 	})
 }
 
-func toolResult(w http.ResponseWriter, id json.RawMessage, v any) {
+// toolResult answers with v as text and as structured content; extra content
+// blocks, such as images, follow the text.
+func toolResult(w http.ResponseWriter, id json.RawMessage, v any, extra ...map[string]any) {
 	text, _ := json.Marshal(v)
 	writeResult(w, id, map[string]any{
 		"resultType":        "complete",
-		"content":           []map[string]any{{"type": "text", "text": string(text)}},
+		"content":           append([]map[string]any{{"type": "text", "text": string(text)}}, extra...),
 		"structuredContent": v,
 	})
+}
+
+// maxImageBlocks bounds how much a single todo_get puts in an agent's context.
+const maxImageBlocks = 5
+
+// imageBlocks are the images a body shows, as MCP image content, so an agent
+// sees the screenshot rather than a path it cannot fetch.
+func (h *Handler) imageBlocks(body string) []map[string]any {
+	var blocks []map[string]any
+	for _, id := range store.ImageRefs(body) {
+		if len(blocks) == maxImageBlocks {
+			break
+		}
+		mime, data, err := h.Store.GetImage(id)
+		if err != nil {
+			continue
+		}
+		blocks = append(blocks, map[string]any{
+			"type":     "image",
+			"data":     base64.StdEncoding.EncodeToString(data),
+			"mimeType": mime,
+		})
+	}
+	return blocks
 }
 
 func stringArg(args map[string]any, key string) string {
@@ -543,7 +569,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 			fail(err)
 			return
 		}
-		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t, base)})
+		toolResult(w, req.ID, map[string]any{"todo": todoJSON(t, base)}, h.imageBlocks(t.Body)...)
 
 	case "todo_update":
 		id, ok := intArg(p.Arguments, "id")

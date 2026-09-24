@@ -2,8 +2,12 @@ package mcp
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -518,6 +522,84 @@ func TestItemURL(t *testing.T) {
 	if todo["url"] != "https://docket.example.net/todo/1" {
 		t.Fatalf("proxied url = %v", todo["url"])
 	}
+}
+
+// An agent reading an item sees its images, not just their paths.
+func TestGetIncludesImages(t *testing.T) {
+	e := newEnv(t)
+	pic := tinyPNG(t, 0)
+	imgID, err := e.store.AddImage(pic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// referenced twice, alongside an id that does not exist
+	body := fmt.Sprintf("broken:\n![image](/image/%d)\n![gone](/image/999)\nagain ![image](/image/%d)", imgID, imgID)
+	id, _, err := e.store.AddTodo("with a screenshot", body, "", "test", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h, b := modernCall("todo_get", fmt.Sprintf(`{"id":%d}`, id))
+	_, r := e.call(t, e.review, h, b)
+	if structured(t, r)["todo"].(map[string]any)["body"] != body {
+		t.Fatal("body changed")
+	}
+	var res struct {
+		Content []struct {
+			Type     string `json:"type"`
+			Text     string `json:"text"`
+			Data     string `json:"data"`
+			MimeType string `json:"mimeType"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(r.Result, &res); err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Content) != 2 || res.Content[0].Type != "text" {
+		t.Fatalf("content: %+v", res.Content)
+	}
+	got := res.Content[1]
+	if got.Type != "image" || got.MimeType != "image/png" || got.Data != base64.StdEncoding.EncodeToString(pic) {
+		t.Fatalf("image block: %+v", got)
+	}
+
+	// The list stays text only.
+	h, b = modernCall("todo_list", `{}`)
+	_, r = e.call(t, e.review, h, b)
+	res.Content = nil
+	json.Unmarshal(r.Result, &res)
+	if len(res.Content) != 1 {
+		t.Fatalf("todo_list content: %d blocks", len(res.Content))
+	}
+
+	// A body full of screenshots does not flood the agent's context.
+	body = ""
+	for i := 1; i <= maxImageBlocks+2; i++ {
+		n, err := e.store.AddImage(tinyPNG(t, uint8(i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		body += fmt.Sprintf("![image](/image/%d)\n", n)
+	}
+	id, _, _ = e.store.AddTodo("many screenshots", body, "", "test", "t")
+	h, b = modernCall("todo_get", fmt.Sprintf(`{"id":%d}`, id))
+	_, r = e.call(t, e.review, h, b)
+	res.Content = nil
+	json.Unmarshal(r.Result, &res)
+	if len(res.Content) != 1+maxImageBlocks {
+		t.Fatalf("todo_get with many images: %d blocks", len(res.Content))
+	}
+}
+
+func tinyPNG(t *testing.T, red uint8) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{red, 0, 0, 255})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func TestItemURLConfigured(t *testing.T) {
