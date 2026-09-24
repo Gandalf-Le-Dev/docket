@@ -243,7 +243,11 @@ backup of that file includes them. Only images stored in Docket are shown. A lin
 an image on another site stays as plain text.
 
 Agents see the images too. `todo_get` returns each image in the body as MCP image
-content after the item's text, up to five per item.
+content after the item's text. A result holds up to five images. Each one can be up
+to 5 MB and all of them together up to 10 MB, counted as the base64 text the agent
+receives. That is about 3.75 MB of image each. An image that does not fit is left
+out, and a text note at the end gives its `/image/N` path, so the agent knows it is
+there.
 
 ## Running in Docker
 

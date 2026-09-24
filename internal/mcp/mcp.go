@@ -344,8 +344,9 @@ var reviewTools = []toolDef{
 		}`),
 	},
 	{
-		Name:        "todo_get",
-		Description: "Fetch one backlog item by id. Images the body shows as ![alt](/image/N) come back as image content after the text, up to 5.",
+		Name: "todo_get",
+		Description: "Fetch one backlog item by id. Images the body shows as ![alt](/image/N) come back as image content after the text: " +
+			"up to 5, each at most 5 MB and 10 MB in all (sizes of the base64). Images left out are listed by /image/N path in a closing text note.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {"id": {"type": "integer"}},
