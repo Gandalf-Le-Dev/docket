@@ -136,7 +136,7 @@ func TestEventsStreamChanges(t *testing.T) {
 	if err := json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &got); err != nil {
 		t.Fatalf("%q: %v", line, err)
 	}
-	if got != (store.Change{ID: id, Op: store.Added}) {
+	if got.ID != id || got.Op != store.Added || got.Seq != s.Seq() {
 		t.Fatalf("event %+v", got)
 	}
 	if strings.Contains(line, "secret") {
@@ -221,7 +221,7 @@ func TestPageActionsPublish(t *testing.T) {
 		resp.Body.Close()
 		select {
 		case got := <-changes:
-			if got != (store.Change{ID: 1, Op: want}) {
+			if got.ID != 1 || got.Op != want {
 				t.Fatalf("%s: got %+v, want #1 %s", path, got, want)
 			}
 		case <-time.After(time.Second):

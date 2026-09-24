@@ -133,7 +133,9 @@ func Open(path string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("apply schema: %w", err)
 	}
-	return &Store{db: db}, nil
+	s := &Store{db: db}
+	s.feed.boot = bootNonce()
+	return s, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }

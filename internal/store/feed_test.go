@@ -3,6 +3,7 @@ package store
 import (
 	"fmt"
 	"image/color"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -38,7 +39,7 @@ func TestEveryWritePublishes(t *testing.T) {
 	}
 	want := func(op Op) {
 		t.Helper()
-		if c := next(t, changes); c != (Change{ID: id, Op: op}) {
+		if c := next(t, changes); c.ID != id || c.Op != op {
 			t.Fatalf("got %+v, want #%d %s", c, id, op)
 		}
 		quiet(t, changes)
@@ -155,5 +156,45 @@ func TestStopUnsubscribes(t *testing.T) {
 	stop2()
 	if n := s.Subscribers(); n != 0 {
 		t.Fatalf("%d subscribers after both stopped", n)
+	}
+}
+
+// Seq moves once per committed write, each change carries the Seq its write
+// left, and a reopened database never repeats the Seqs of an earlier run.
+func TestSeq(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.db")
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	changes, stop := s.Subscribe()
+	defer stop()
+
+	start := s.Seq()
+	if _, _, err := s.AddTodo("item", "", "", "", "x"); err != nil {
+		t.Fatal(err)
+	}
+	c := next(t, changes)
+	if c.Seq == start || c.Seq != s.Seq() {
+		t.Fatalf("seq %q after a write, change says %q, before %q", s.Seq(), c.Seq, start)
+	}
+	s.AddTodo("item", "", "", "", "x")
+	s.GetTodo(1)
+	if s.Seq() != c.Seq {
+		t.Fatalf("a duplicate add or a read moved seq to %q", s.Seq())
+	}
+	s.RenameScope("", "a")
+	if c2 := next(t, changes); c2.Seq == c.Seq || c2.Seq != s.Seq() {
+		t.Fatalf("rename: change seq %q, store seq %q", c2.Seq, s.Seq())
+	}
+	s.Close()
+
+	again, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer again.Close()
+	if again.Seq() == start || again.Seq() == s.Seq() {
+		t.Fatalf("a reopened store repeats seq %q", again.Seq())
 	}
 }

@@ -16,7 +16,7 @@ func TestToolWritesPublish(t *testing.T) {
 		t.Helper()
 		select {
 		case c := <-changes:
-			if c != (store.Change{ID: 1, Op: op}) {
+			if c.ID != 1 || c.Op != op {
 				t.Fatalf("got %+v, want #1 %s", c, op)
 			}
 		case <-time.After(time.Second):
