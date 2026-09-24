@@ -59,6 +59,53 @@ func TestIndexRequiresLogin(t *testing.T) {
 	}
 }
 
+// An htmx request without a session loads the login page whole instead of
+// swapping it into the page it came from; so does signing out.
+func TestHTMXGoesToLoginWhole(t *testing.T) {
+	srv, _, review, _ := newEnv(t)
+	c := client(t)
+	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	send := func(method, path string, header http.Header) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+path, nil)
+		req.Header = header.Clone()
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	htmx := http.Header{"Hx-Request": {"true"}}
+	for _, r := range []struct{ method, path string }{{"GET", "/?open=1"}, {"POST", "/todo/close"}} {
+		resp := send(r.method, r.path, htmx)
+		if resp.StatusCode != http.StatusUnauthorized || resp.Header.Get("HX-Redirect") != "/login" {
+			t.Fatalf("htmx %s %s: %d, HX-Redirect %q", r.method, r.path, resp.StatusCode, resp.Header.Get("HX-Redirect"))
+		}
+	}
+	// The back button's restore cannot be redirected by header, so it follows
+	// the ordinary redirect.
+	resp := send("GET", "/", http.Header{"Hx-Request": {"true"}, "Hx-History-Restore-Request": {"true"}})
+	if resp.StatusCode != http.StatusSeeOther || resp.Header.Get("Location") != "/login" {
+		t.Fatalf("history restore: %d to %q", resp.StatusCode, resp.Header.Get("Location"))
+	}
+	if resp := send("GET", "/", nil); resp.StatusCode != http.StatusSeeOther || resp.Header.Get("HX-Redirect") != "" {
+		t.Fatalf("plain request: %d, HX-Redirect %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
+	}
+
+	login(t, c, srv, review)
+	if resp := send("GET", "/", htmx); resp.StatusCode != http.StatusOK {
+		t.Fatalf("signed in htmx request: %d", resp.StatusCode)
+	}
+	resp = send("POST", "/logout", htmx)
+	if resp.Header.Get("HX-Redirect") != "/login" {
+		t.Fatalf("htmx sign out: %d, HX-Redirect %q", resp.StatusCode, resp.Header.Get("HX-Redirect"))
+	}
+	if resp := send("GET", "/", htmx); resp.Header.Get("HX-Redirect") != "/login" {
+		t.Fatalf("still signed in after sign out: %d", resp.StatusCode)
+	}
+}
+
 func TestPublishTokenRejected(t *testing.T) {
 	srv, _, _, publish := newEnv(t)
 	c := client(t)

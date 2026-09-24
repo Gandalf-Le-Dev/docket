@@ -298,8 +298,22 @@ func (h *Handler) requireReview(next http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 		}
-		http.Redirect(w, r, "/login", http.StatusSeeOther)
+		toLogin(w, r)
 	}
+}
+
+// toLogin sends a signed-out browser to the login page. htmx would follow a
+// plain redirect and swap the login page into the one it came from, so an htmx
+// request is told to load it whole instead. A back-button restore is the one
+// htmx request that ignores HX-Redirect: it follows the 303 and puts the login
+// page in the body, which works because the login form is never boosted.
+func toLogin(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("HX-Request") == "true" && r.Header.Get("HX-History-Restore-Request") != "true" {
+		w.Header().Set("HX-Redirect", "/login")
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // chrome is what every signed-in page carries for its header and tabs, so
@@ -358,7 +372,7 @@ func (h *Handler) login(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) logout(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true})
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
+	toLogin(w, r)
 }
 
 // todoView is one item as the "item" template renders it. Focus marks the
