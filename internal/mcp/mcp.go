@@ -428,21 +428,39 @@ func toolResult(w http.ResponseWriter, id json.RawMessage, v any, extra ...map[s
 	})
 }
 
-// maxImageBlocks bounds how much a single todo_get puts in an agent's context.
-const maxImageBlocks = 5
+// These bound how much a single todo_get puts in an agent's context. Sizes
+// are of the base64 text, which is what the client receives: 5 MB of it is
+// about 3.75 MB of image.
+const (
+	maxImageBlocks       = 5
+	maxImageBlockBytes   = 5 << 20
+	maxImagePayloadBytes = 10 << 20
+)
 
 // imageBlocks are the images a body shows, as MCP image content, so an agent
-// sees the screenshot rather than a path it cannot fetch.
+// sees the screenshot rather than a path it cannot fetch. An image too big to
+// include is named in a text block instead, so the agent knows it is there.
 func (h *Handler) imageBlocks(body string) []map[string]any {
 	var blocks []map[string]any
+	images, payload := 0, 0
 	for _, id := range store.ImageRefs(body) {
-		if len(blocks) == maxImageBlocks {
+		if images == maxImageBlocks {
 			break
 		}
 		mime, data, err := h.Store.GetImage(id)
 		if err != nil {
 			continue
 		}
+		size := base64.StdEncoding.EncodedLen(len(data))
+		if size > maxImageBlockBytes || payload+size > maxImagePayloadBytes {
+			blocks = append(blocks, map[string]any{
+				"type": "text",
+				"text": fmt.Sprintf("image /image/%d left out: too large to include in this result", id),
+			})
+			continue
+		}
+		images++
+		payload += size
 		blocks = append(blocks, map[string]any{
 			"type":     "image",
 			"data":     base64.StdEncoding.EncodeToString(data),

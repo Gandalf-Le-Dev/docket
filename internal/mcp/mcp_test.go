@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/Gandalf-Le-Dev/docket/internal/store"
@@ -589,6 +590,76 @@ func TestGetIncludesImages(t *testing.T) {
 	if len(res.Content) != 1+maxImageBlocks {
 		t.Fatalf("todo_get with many images: %d blocks", len(res.Content))
 	}
+}
+
+// Images too heavy for one result are named instead of sent, whether one is
+// too big alone or the result already carries enough.
+func TestGetBoundsImageBytes(t *testing.T) {
+	e := newEnv(t)
+	var body string
+	var ids []int64
+	for i, rows := range []int{850, 1050, 850, 850} { // about 3.4, 4.2, 3.4 and 3.4 MB
+		pic := flatPNG(t, 1000, rows, uint8(i+1))
+		id, err := e.store.AddImage(pic)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, id)
+		body += fmt.Sprintf("![image](/image/%d)\n", id)
+	}
+	id, _, err := e.store.AddTodo("heavy screenshots", body, "", "test", "t")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h, b := modernCall("todo_get", fmt.Sprintf(`{"id":%d}`, id))
+	_, r := e.call(t, e.review, h, b)
+	var res struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+			Data string `json:"data"`
+		} `json:"content"`
+	}
+	if err := json.Unmarshal(r.Result, &res); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"text", "image", "text", "image", "text"}
+	if len(res.Content) != len(want) {
+		t.Fatalf("got %d blocks, want %d", len(res.Content), len(want))
+	}
+	payload := 0
+	for i, c := range res.Content {
+		if c.Type != want[i] {
+			t.Fatalf("block %d is %s, want %s", i, c.Type, want[i])
+		}
+		if len(c.Data) > maxImageBlockBytes {
+			t.Fatalf("block %d carries %d bytes", i, len(c.Data))
+		}
+		payload += len(c.Data)
+	}
+	if payload > maxImagePayloadBytes {
+		t.Fatalf("result carries %d bytes of images", payload)
+	}
+	for i, n := range map[int]int64{2: ids[1], 4: ids[3]} {
+		if !strings.Contains(res.Content[i].Text, fmt.Sprintf("/image/%d", n)) {
+			t.Fatalf("block %d does not name the image left out: %q", i, res.Content[i].Text)
+		}
+	}
+}
+
+// flatPNG is an uncompressed PNG of one color, so its size is predictable.
+func flatPNG(t *testing.T, w, h int, fill uint8) []byte {
+	t.Helper()
+	img := image.NewNRGBA(image.Rect(0, 0, w, h))
+	for i := range img.Pix {
+		img.Pix[i] = fill
+	}
+	var buf bytes.Buffer
+	if err := (&png.Encoder{CompressionLevel: png.NoCompression}).Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func tinyPNG(t *testing.T, red uint8) []byte {
