@@ -668,7 +668,6 @@ func TestUndoFromToast(t *testing.T) {
 	// again, the web's Undo is refused and the agent's verdict stands.
 	_, body = post("/todo/close", url.Values{"id": {"1"}, "outcome": {"dropped"}, "reason": {"from the web"}})
 	first := toastUndo(body)
-	time.Sleep(time.Millisecond)
 	agent, _, err := s.CloseTodo(id, "done", "an agent finished it")
 	if err != nil {
 		t.Fatal(err)

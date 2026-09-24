@@ -154,6 +154,15 @@ func TestUndoClose(t *testing.T) {
 	undo(token, before)
 	refused(token, "changed since")
 
+	// Two closes at the same instant are still told apart.
+	a, dropped := closeNow(t, s, id, "dropped")
+	b, _ := closeNow(t, s, id, "done")
+	if a == b {
+		t.Fatalf("two closes share token %s", a)
+	}
+	refused(a, "closed again")
+	undo(b, dropped)
+
 	// A done item dropped later goes back to done, closed when it was.
 	first := closeIt("done", "shipped")
 	done, _ := s.GetTodo(id)
@@ -179,16 +188,32 @@ func TestUndoClose(t *testing.T) {
 	refused(token, "expired")
 	refused("", "expired")
 
-	// A close past the window is forgotten by the next one, not kept forever.
+	// A close past the window is forgotten by the next one, not kept forever;
+	// and a token another item's close was given undoes nothing here.
 	other, _, _ := s.AddTodo("other", "", "", "", "x")
 	_, fresh, _ := s.CloseTodo(other, "done", "")
 	var n int
-	if err := s.db.QueryRow("SELECT COUNT(*) FROM closing").Scan(&n); err != nil || n != 1 {
-		t.Fatalf("closing rows: %d %v", n, err)
+	if err := s.db.QueryRow("SELECT COUNT(*) FROM undo").Scan(&n); err != nil || n != 1 {
+		t.Fatalf("undo rows: %d %v", n, err)
+	}
+	refused(fresh, "expired")
+	// Tokens are never reused, even once their row is gone.
+	if fresh == token || fresh == first || fresh == second {
+		t.Fatalf("token reused: %s", fresh)
 	}
 	if _, err := s.UndoClose(999, fresh); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("undo unknown: %v", err)
 	}
+}
+
+// closeNow closes without moving the clock.
+func closeNow(t *testing.T, s *Store, id int64, outcome string) (string, Todo) {
+	t.Helper()
+	got, undo, err := s.CloseTodo(id, outcome, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return undo, got
 }
 
 func TestListFilters(t *testing.T) {

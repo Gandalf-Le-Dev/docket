@@ -54,14 +54,17 @@ CREATE TABLE IF NOT EXISTS image (
 );
 
 -- What an item's latest close replaced, so UndoClose can put it back exactly.
--- Any other write to the item deletes its row: that close is no longer undoable.
-CREATE TABLE IF NOT EXISTS closing (
-  todo_id    INTEGER PRIMARY KEY,
+-- The id names that close; AUTOINCREMENT so no later close is ever given it.
+-- Any other write to the item marks the row spent: no longer undoable.
+CREATE TABLE IF NOT EXISTS undo (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  todo_id    INTEGER NOT NULL UNIQUE,
   body       TEXT NOT NULL,
   state      TEXT NOT NULL,
   updated_at TEXT NOT NULL,
   closed_at  TEXT,
-  at         TEXT NOT NULL
+  at         TEXT NOT NULL,
+  spent      INTEGER NOT NULL DEFAULT 0
 );
 `
 
@@ -345,7 +348,7 @@ func updateTodo(q querier, id int64, u TodoUpdate) (Todo, error) {
 	); err != nil {
 		return Todo{}, err
 	}
-	_, err = q.Exec("DELETE FROM closing WHERE todo_id = ?", t.ID)
+	_, err = q.Exec("UPDATE undo SET spent = 1 WHERE todo_id = ?", t.ID)
 	return t, err
 }
 
@@ -381,23 +384,23 @@ func (s *Store) CloseTodo(id int64, outcome, reason string) (t Todo, undo string
 	if err != nil {
 		return Todo{}, "", err
 	}
-	if _, err := tx.Exec("DELETE FROM closing WHERE at < ?", undoCutoff()); err != nil {
+	if _, err := tx.Exec("DELETE FROM undo WHERE todo_id = ? OR at < ?", id, undoCutoff()); err != nil {
 		return Todo{}, "", err
 	}
-	undo = clock().UTC().Format(closeStamp)
-	if _, err := tx.Exec("INSERT INTO closing (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
+	res, err := tx.Exec("INSERT INTO undo (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
 		id, before.Body, before.State, before.UpdatedAt,
-		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, undo); err != nil {
+		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, t.UpdatedAt)
+	if err != nil {
 		return Todo{}, "", err
 	}
-	return t, undo, tx.Commit()
+	n, err := res.LastInsertId()
+	if err != nil {
+		return Todo{}, "", err
+	}
+	return t, strconv.FormatInt(n, 10), tx.Commit()
 }
 
-// closeStamp is when a close happened, to the nanosecond so that two closes
-// of one item never share it, and fixed width so the text sorts as the time.
-const closeStamp = "2006-01-02T15:04:05.000000000Z07:00"
-
-func undoCutoff() string { return clock().Add(-UndoWindow).UTC().Format(closeStamp) }
+func undoCutoff() string { return clock().Add(-UndoWindow).UTC().Format(time.RFC3339) }
 
 // UndoWindow is how long a close stays undoable. The web page offers Undo for
 // seconds; the rest is slack for a page left open, not an archive.
@@ -408,9 +411,10 @@ const UndoWindow = 24 * time.Hour
 // note as history. A later close, any other write to the item, or UndoWindow
 // passing leaves that close with nothing to undo, and the error says which.
 func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
-	at, err := time.Parse(closeStamp, undo)
-	if err != nil || at.Before(clock().Add(-UndoWindow)) {
-		return Todo{}, ValidationError(fmt.Sprintf("nothing to undo on #%d: its undo has expired", id))
+	expired := ValidationError(fmt.Sprintf("nothing to undo on #%d: its undo has expired", id))
+	n, err := strconv.ParseInt(undo, 10, 64)
+	if err != nil {
+		return Todo{}, expired
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -422,23 +426,36 @@ func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 		return Todo{}, err
 	}
 	var closed sql.NullString
-	var latest string
-	err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at FROM closing WHERE todo_id = ?", id).
-		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &latest)
+	var at string
+	var spent bool
+	err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at, spent FROM undo WHERE id = ? AND todo_id = ?", n, id).
+		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &at, &spent)
+	if errors.Is(err, sql.ErrNoRows) {
+		// A later close of the item replaced this one's row; otherwise the row
+		// was pruned, or the token never named a close of this item.
+		var later int
+		err = tx.QueryRow("SELECT COUNT(*) FROM undo WHERE todo_id = ?", id).Scan(&later)
+		if err == nil && later > 0 {
+			return Todo{}, ValidationError(fmt.Sprintf("#%d has been closed again since, so this undo no longer applies", id))
+		}
+		if err == nil {
+			return Todo{}, expired
+		}
+	}
 	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		return Todo{}, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
 	case err != nil:
 		return Todo{}, err
-	case latest != undo:
-		return Todo{}, ValidationError(fmt.Sprintf("#%d has been closed again since, so this undo no longer applies", id))
+	case at < undoCutoff():
+		return Todo{}, expired
+	case spent:
+		return Todo{}, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
 	}
 	t.ClosedAt = closed.String
 	if _, err := tx.Exec("UPDATE todo SET body = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",
 		t.Body, t.State, t.UpdatedAt, closed, id); err != nil {
 		return Todo{}, err
 	}
-	if _, err := tx.Exec("DELETE FROM closing WHERE todo_id = ?", id); err != nil {
+	if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE id = ?", n); err != nil {
 		return Todo{}, err
 	}
 	return t, tx.Commit()
@@ -506,7 +523,7 @@ func (s *Store) RenameScope(from, to string) (int64, error) {
 		return 0, err
 	}
 	defer tx.Rollback()
-	if _, err := tx.Exec("DELETE FROM closing WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
+	if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
 		return 0, err
 	}
 	res, err := tx.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)
