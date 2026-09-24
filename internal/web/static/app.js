@@ -112,7 +112,7 @@
       e.preventDefault();
       const files = images(e.dataTransfer.files);
       if (!files.length) {
-        status.textContent = "Only images can be attached";
+        status.textContent = "only images can be attached";
         return;
       }
       ta.focus();
