@@ -74,7 +74,7 @@
     {{end}}
   </header>
   {{range $p.Entries}}
-    <a class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}"
+    <a class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}" data-rev="{{.ID}}@{{.UpdatedAt}}"
        href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" .ID)}}">
       <span class="id">{{.ID}}</span>
       <span>

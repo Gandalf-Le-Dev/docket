@@ -261,6 +261,10 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .compact .entry .title { font-size: 14px; line-height: 20px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .compact .entry .src, .compact .entry .reason { display: none; }
+/* a refresh can reorder the list; the tint shows the eye what it changed */
+.entry.fresh { animation: fresh 1500ms ease-out; }
+@keyframes fresh { from { background-color: var(--attention-quiet); } }
+@keyframes fresh-still { from, to { background-color: var(--attention-quiet); } }
 /* the row an action takes out of the list folds away while its swap waits */
 .htmx-swapping .entry.on { interpolate-size: allow-keywords; overflow: hidden;
   animation: leave 200ms ease-in forwards; }
@@ -401,6 +405,7 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
 @media (prefers-reduced-motion: reduce) {
   .btn, .entry, .panel > header .tools { transition-duration: 1ms; }
   .htmx-swapping .entry.on { animation-duration: 1ms; }
+  .entry.fresh { animation: fresh-still 1500ms; }
   .toast { animation: toast-out 1ms 6s forwards; }
   .wm .o .lid { animation: none; }
 }

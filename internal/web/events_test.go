@@ -191,6 +191,21 @@ func waitSubscribers(t *testing.T, s *store.Store, want int) {
 	}
 }
 
+// A row names its item and version, so a live refresh can tell which rows
+// are new or changed.
+func TestRowsCarryRevision(t *testing.T) {
+	srv, s, c := eventsEnv(t, time.Hour)
+	id, _, _ := s.AddTodo("item", "", "", "", "x")
+	got, _ := s.GetTodo(id)
+	resp, err := c.Get(srv.URL + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `data-rev="1@` + got.UpdatedAt + `"`; !strings.Contains(readAll(t, resp), want) {
+		t.Fatalf("row without %s", want)
+	}
+}
+
 // Every action the page offers reaches the change feed, so another tab hears
 // of it.
 func TestPageActionsPublish(t *testing.T) {

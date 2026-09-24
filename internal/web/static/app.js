@@ -336,17 +336,24 @@
       const active = document.activeElement;
       const drawer = document.querySelector("#page .drawer .body");
       return {
+        revs: new Set([...document.querySelectorAll("#page [data-rev]")].map((el) => el.dataset.rev)),
         scroll: drawer ? drawer.scrollTop : 0,
         search: Boolean(active && active.matches("#page input[type=search]")),
       };
     }
 
     // What the swap took is put back: the drawer's scroll, the search field's
-    // focus.
+    // focus. Rows the page did not show a moment ago light up; comparing with
+    // the page just before this swap, not with the last live one, keeps a
+    // change made in this tab, which its own swap already showed, from
+    // lighting up again.
     function settle() {
       const was = before;
       before = null;
       if (!was) return;
+      for (const el of document.querySelectorAll("#page [data-rev]")) {
+        if (!was.revs.has(el.dataset.rev)) el.classList.add("fresh");
+      }
       const drawer = document.querySelector("#page .drawer .body");
       if (drawer) drawer.scrollTop = was.scroll;
       const q = was.search && document.querySelector("#page input[type=search]");

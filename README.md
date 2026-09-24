@@ -207,7 +207,7 @@ reload to see changes.
 
 The page stays current by itself. When an agent files, edits or closes an item,
 or you change one on another device, every open page updates within about a
-second. A page never updates while
+second, and the rows that changed light up briefly. A page never updates while
 you are typing in one of its forms: a small "Updates waiting" note appears
 instead, and the update comes when you save, cancel, or leave the form
 unchanged. A page in a background tab updates when you come back to it. If the
