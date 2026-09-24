@@ -506,6 +506,31 @@ func TestImageServe(t *testing.T) {
 	}
 }
 
+// A body's links, same-site ones included, are plain links: htmx must not
+// boost /image/5 or /healthz into a swap that expects a page.
+func TestBodiesAreNotBoosted(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("links", "see "+srv.URL+"/healthz", "", "test", "t")
+	s.CloseTodo(id, "done", "see "+srv.URL+"/image/5")
+	for _, page := range []string{"/todo/1", "/?state=done&open=1"} {
+		resp, err := c.Get(srv.URL + page)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := readAll(t, resp)
+		for _, want := range []string{
+			`<div class="text" hx-boost="false">see <a href="` + srv.URL + `/healthz"`,
+			`<p class="verdict" hx-boost="false"><b>Done.</b> see <a href="` + srv.URL + `/image/5"`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing %q:\n%s", page, want, body)
+			}
+		}
+	}
+}
+
 func TestActionsReportBack(t *testing.T) {
 	srv, s, review, _ := newEnv(t)
 	c := client(t)

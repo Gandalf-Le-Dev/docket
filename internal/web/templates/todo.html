@@ -41,9 +41,9 @@
     <div class="main">
       <h1 class="display-m">{{.Item.Title}}</h1>
       {{if .Item.Verdict}}
-        <p class="verdict"><b>{{if eq .Item.State "done"}}Done.{{else}}Dropped.{{end}}</b> {{body .Item.Verdict}}</p>
+        <p class="verdict" hx-boost="false"><b>{{if eq .Item.State "done"}}Done.{{else}}Dropped.{{end}}</b> {{body .Item.Verdict}}</p>
       {{end}}
-      {{if .Item.Text}}<div class="text">{{body .Item.Text}}</div>{{end}}
+      {{if .Item.Text}}<div class="text" hx-boost="false">{{body .Item.Text}}</div>{{end}}
 
       <div class="acts">
         {{if eq .Do "drop"}}

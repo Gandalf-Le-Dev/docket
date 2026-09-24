@@ -1,5 +1,7 @@
 {{/* Done, Drop and Reopen take the entry out of the list: their swap waits
      long enough for its row to fold away (app.css, .htmx-swapping) */}}
+{{/* bodies are the writer's text: their links go where they say, as pages,
+     even when they point back at this site */}}
 {{define "drawer"}}{{$t := .T}}{{$s := .S}}
 {{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
 <aside class="drawer" aria-label="Entry {{$t.ID}}" hx-swap="outerHTML show:none">
@@ -38,9 +40,9 @@
       {{if $t.Source}}<dt>From</dt><dd>{{$t.Source}}</dd>{{end}}
     </dl>
     {{if $t.Verdict}}
-      <p class="verdict"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{body $t.Verdict}}</p>
+      <p class="verdict" hx-boost="false"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{body $t.Verdict}}</p>
     {{end}}
-    {{if $t.Text}}<div class="text">{{body $t.Text}}</div>{{end}}
+    {{if $t.Text}}<div class="text" hx-boost="false">{{body $t.Text}}</div>{{end}}
   </div>
 
   <footer>

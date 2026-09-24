@@ -81,7 +81,6 @@
     }
   }
 
-  // bodyOf is the body field an event landed on, with its attach row, or null.
   function bodyOf(target) {
     const ta = target instanceof Element ? target.closest("textarea[name=body]") : null;
     const attach = ta && ta.id ? document.querySelector(`.attach[data-for="${ta.id}"]`) : null;
@@ -151,6 +150,16 @@
     if (!shown) return;
     const { top } = shown.getBoundingClientRect();
     if (top < 0 || top > window.innerHeight) shown.scrollIntoView();
+  });
+
+  // A boosted link can lead off the page this script knows, to /healthz say;
+  // with no #page in the answer the swap would blank the screen, so the
+  // browser loads it as the page it is.
+  document.addEventListener("htmx:beforeSwap", (e) => {
+    const { boosted, requestConfig, xhr, serverResponse, isError } = e.detail;
+    if (!boosted || requestConfig.verb !== "get" || isError || / id="page"/.test(serverResponse)) return;
+    e.preventDefault();
+    location.href = xhr.responseURL || requestConfig.path;
   });
 
   // Capture, and stop there: htmx submits a boosted form from its own
