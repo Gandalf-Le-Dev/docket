@@ -3,6 +3,7 @@ package store
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
@@ -326,6 +327,90 @@ func TestAddImageMarksSeen(t *testing.T) {
 	}
 	if got := seenAt(t, s, id); got != "2026-01-31T00:00:00Z" {
 		t.Fatalf("seen_at after dedupe = %s", got)
+	}
+}
+
+func TestPruneImages(t *testing.T) {
+	const grace = 7 * 24 * time.Hour
+	const day = 24 * time.Hour
+	s := testStore(t)
+	advance := setClock(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	add := func(shade uint8) int64 {
+		t.Helper()
+		id, err := s.AddImage(tinyPNG(t, color.Gray{Y: shade}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	marker := func(id int64) string { return fmt.Sprintf("![image](/image/%d)", id) }
+	prune := func(want int) {
+		t.Helper()
+		if n, err := s.PruneImages(grace); err != nil || n != want {
+			t.Fatalf("prune: deleted %d, want %d (err %v)", n, want, err)
+		}
+	}
+	exists := func(id int64) bool {
+		t.Helper()
+		_, _, err := s.GetImage(id)
+		if err != nil && !errors.Is(err, ErrNotFound) {
+			t.Fatal(err)
+		}
+		return err == nil
+	}
+
+	inOpen, inClosed, abandoned, repasted, removed := add(1), add(2), add(3), add(4), add(5)
+	s.AddTodo("open", marker(inOpen), "", "", "x")
+	closed, _, _ := s.AddTodo("closed", marker(inClosed), "", "", "x")
+	s.CloseTodo(closed, "done", "")
+	edited, _, _ := s.AddTodo("edited", "before "+marker(removed), "", "", "x")
+
+	// Just short of the grace nothing goes. This sweep still sees removed's
+	// marker, so removed's grace restarts here.
+	advance(grace - time.Second)
+	prune(0)
+
+	// Two days later abandoned and repasted are past the grace, but repasted
+	// is pasted again first, which restarts its grace.
+	advance(2 * day)
+	if _, err := s.AddImage(tinyPNG(t, color.Gray{Y: 4})); err != nil {
+		t.Fatal(err)
+	}
+	body := "after, image gone"
+	if _, err := s.UpdateTodo(edited, TodoUpdate{Body: &body}); err != nil {
+		t.Fatal(err)
+	}
+	prune(1)
+	if exists(abandoned) {
+		t.Fatal("abandoned image survived its grace")
+	}
+	for name, id := range map[string]int64{"open": inOpen, "closed": inClosed, "repasted": repasted, "removed": removed} {
+		if !exists(id) {
+			t.Fatalf("%s image deleted", name)
+		}
+	}
+
+	// removed goes one grace after the last sweep that saw its marker.
+	advance(grace - 2*day - time.Second)
+	prune(0)
+	advance(2 * time.Second)
+	prune(1)
+	if exists(removed) {
+		t.Fatal("removed image outlived its grace")
+	}
+
+	// repasted goes one grace after it was pasted again.
+	advance(2 * day)
+	prune(1)
+	if exists(repasted) {
+		t.Fatal("repasted image outlived its grace")
+	}
+	if !exists(inOpen) || !exists(inClosed) {
+		t.Fatal("referenced images deleted")
+	}
+
+	if _, err := s.PruneImages(0); err == nil {
+		t.Fatal("zero grace accepted")
 	}
 }
 

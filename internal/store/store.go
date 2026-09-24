@@ -509,7 +509,8 @@ var imageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/g
 
 // AddImage stores an image and returns its id. The type is sniffed from the
 // bytes, never taken from the uploader. The same bytes twice return the id
-// they already have, so pasting a screenshot again costs nothing.
+// they already have, so pasting a screenshot again costs nothing, and count
+// as seeing the image now, which restarts its PruneImages grace.
 func (s *Store) AddImage(data []byte) (int64, error) {
 	if len(data) > MaxImageBytes {
 		return 0, ValidationError(fmt.Sprintf("image exceeds %d MB", MaxImageBytes>>20))
@@ -537,6 +538,60 @@ func (s *Store) GetImage(id int64) (mime string, data []byte, err error) {
 		return "", nil, ErrNotFound
 	}
 	return mime, data, err
+}
+
+// PruneImages deletes the images no todo body has referenced for at least
+// grace. Each sweep marks every referenced image as seen now, so the grace
+// runs from the last sweep that found a reference, or from the upload for an
+// image that was never saved in a body. Bodies of closed todos count, so
+// their images stay. One transaction keeps a body saved mid-sweep from
+// losing an image it has just started to show.
+func (s *Store) PruneImages(grace time.Duration) (int, error) {
+	if grace <= 0 {
+		return 0, ValidationError("grace must be positive")
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	rows, err := tx.Query("SELECT body FROM todo WHERE body LIKE '%/image/%'")
+	if err != nil {
+		return 0, err
+	}
+	var refs []int64
+	for rows.Next() {
+		var body string
+		if err := rows.Scan(&body); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		refs = append(refs, ImageRefs(body)...)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+
+	ts := now()
+	for _, id := range refs {
+		if _, err := tx.Exec("UPDATE image SET seen_at = ? WHERE id = ?", ts, id); err != nil {
+			return 0, err
+		}
+	}
+	// Every referenced image was just seen now, later than the cutoff, so
+	// this only reaches unreferenced ones.
+	cutoff := clock().Add(-grace).UTC().Format(time.RFC3339)
+	res, err := tx.Exec("DELETE FROM image WHERE seen_at < ?", cutoff)
+	if err != nil {
+		return 0, err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return 0, err
+	}
+	return int(n), tx.Commit()
 }
 
 // ImageMarker is how a body shows an image: ![alt](/image/<id>). Only this
