@@ -1,5 +1,5 @@
-// Package store owns Docket's SQLite database: the todos and the tokens.
-// One file, WAL mode, two tables. The whole dataset is a few thousand rows
+// Package store owns Docket's SQLite database: the todos, the tokens and the
+// images pasted into bodies. One file, WAL mode, three tables. The whole dataset is a few thousand rows
 // forever, so everything here is deliberately boring.
 package store
 
@@ -10,6 +10,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -38,6 +41,14 @@ CREATE TABLE IF NOT EXISTS token (
   created_at TEXT NOT NULL,
   revoked_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS image (
+  id         INTEGER PRIMARY KEY,
+  sha256     TEXT NOT NULL UNIQUE,
+  mime       TEXT NOT NULL,
+  data       BLOB NOT NULL,
+  created_at TEXT NOT NULL
+);
 `
 
 // Guard rails on publish: a publish token sits on the least-trusted machine
@@ -47,6 +58,7 @@ const (
 	MaxBodyBytes   = 64 * 1024
 	MaxScopeBytes  = 100
 	MaxSourceBytes = 500
+	MaxImageBytes  = 5 << 20
 )
 
 var ErrNotFound = errors.New("not found")
@@ -485,4 +497,57 @@ func (s *Store) ListTokens() ([]TokenInfo, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// imageTypes is what a body may show. SVG stays out: it is a document that
+// can carry script, not a picture.
+var imageTypes = map[string]bool{"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true}
+
+// AddImage stores an image and returns its id. The type is sniffed from the
+// bytes, never taken from the uploader. The same bytes twice return the id
+// they already have, so pasting a screenshot again costs nothing.
+func (s *Store) AddImage(data []byte) (int64, error) {
+	if len(data) > MaxImageBytes {
+		return 0, ValidationError(fmt.Sprintf("image exceeds %d MB", MaxImageBytes>>20))
+	}
+	mime := http.DetectContentType(data)
+	if !imageTypes[mime] {
+		return 0, ValidationError("image must be PNG, JPEG, GIF or WebP")
+	}
+	sum := sha256.Sum256(data)
+	hash := hex.EncodeToString(sum[:])
+	if _, err := s.db.Exec("INSERT INTO image (sha256, mime, data, created_at) VALUES (?, ?, ?, ?) ON CONFLICT (sha256) DO NOTHING",
+		hash, mime, data, now()); err != nil {
+		return 0, err
+	}
+	var id int64
+	err := s.db.QueryRow("SELECT id FROM image WHERE sha256 = ?", hash).Scan(&id)
+	return id, err
+}
+
+func (s *Store) GetImage(id int64) (mime string, data []byte, err error) {
+	err = s.db.QueryRow("SELECT mime, data FROM image WHERE id = ?", id).Scan(&mime, &data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil, ErrNotFound
+	}
+	return mime, data, err
+}
+
+// ImageMarker is how a body shows an image: ![alt](/image/<id>). Only this
+// relative form counts, so a body can never make a reader fetch a remote URL.
+var ImageMarker = regexp.MustCompile(`!\[([^\]\n]*)\]\(/image/(\d+)\)`)
+
+// ImageRefs is the ids of the images a body shows, in order, each once.
+func ImageRefs(body string) []int64 {
+	var ids []int64
+	seen := map[int64]bool{}
+	for _, m := range ImageMarker.FindAllStringSubmatch(body, -1) {
+		id, err := strconv.ParseInt(m[2], 10, 64)
+		if err != nil || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	return ids
 }

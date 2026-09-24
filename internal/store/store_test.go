@@ -1,7 +1,11 @@
 package store
 
 import (
+	"bytes"
 	"errors"
+	"image"
+	"image/color"
+	"image/png"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -243,5 +247,67 @@ func TestScopeSummaries(t *testing.T) {
 		if got[i] != want[i] {
 			t.Errorf("row %d: got %+v want %+v", i, got[i], want[i])
 		}
+	}
+}
+
+func tinyPNG(t *testing.T, c color.Color) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, c)
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func TestImages(t *testing.T) {
+	s := testStore(t)
+	red := tinyPNG(t, color.RGBA{255, 0, 0, 255})
+
+	id, err := s.AddImage(red)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mime, data, err := s.GetImage(id)
+	if err != nil || mime != "image/png" || !bytes.Equal(data, red) {
+		t.Fatalf("get: %q %d bytes %v", mime, len(data), err)
+	}
+
+	// The same bytes again are the same image, not a second copy.
+	if again, err := s.AddImage(red); err != nil || again != id {
+		t.Fatalf("dedupe: %d %v", again, err)
+	}
+	blue, err := s.AddImage(tinyPNG(t, color.RGBA{0, 0, 255, 255}))
+	if err != nil || blue == id {
+		t.Fatalf("second image: %d %v", blue, err)
+	}
+
+	if _, _, err := s.GetImage(999); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("missing image: %v", err)
+	}
+}
+
+func TestImageValidation(t *testing.T) {
+	s := testStore(t)
+	var ve ValidationError
+	for name, data := range map[string][]byte{
+		"empty": nil,
+		"text":  []byte("not a picture"),
+		"svg":   []byte(`<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>`),
+		"html":  []byte("<!doctype html><script>alert(1)</script>"),
+		"huge":  append(tinyPNG(t, color.White), make([]byte, MaxImageBytes)...),
+	} {
+		if _, err := s.AddImage(data); !errors.As(err, &ve) {
+			t.Errorf("%s accepted: %v", name, err)
+		}
+	}
+}
+
+func TestImageRefs(t *testing.T) {
+	body := "see ![a](/image/3) and ![b](/image/1)\n![again](/image/3) ![x](https://evil.example/a.png) ![y](/image/abc)"
+	got := ImageRefs(body)
+	if len(got) != 2 || got[0] != 3 || got[1] != 1 {
+		t.Fatalf("ImageRefs = %v", got)
 	}
 }
