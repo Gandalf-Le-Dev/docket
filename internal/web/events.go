@@ -15,7 +15,8 @@ const heartbeat = 25 * time.Second
 
 // events streams the store's changes to a signed-in page as Server-Sent
 // Events: which item, and whether it was added, updated, closed or reopened,
-// never its text. The page refreshes itself from the ordinary pages.
+// never its text, with the store.Seq it left. The page compares that with the
+// Seq it was rendered at and refreshes itself from the ordinary pages.
 //
 // Signed out, it answers 204, the one answer that stops EventSource from
 // reconnecting; the page then loads itself and lands on the login page. The
@@ -40,6 +41,11 @@ func (h *Handler) events(w http.ResponseWriter, r *http.Request) {
 	// nginx holds a response back until it is done unless told not to.
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
+	// Sent at once, it tells the page whether it missed anything before the
+	// stream opened, and gets bytes past a proxy that holds back headers.
+	if _, err := fmt.Fprintf(w, "event: seq\ndata: %s\n\n", h.store.Seq()); err != nil {
+		return
+	}
 	if err := rc.Flush(); err != nil {
 		return
 	}

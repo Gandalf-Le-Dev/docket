@@ -364,6 +364,7 @@ type chrome struct {
 	Flash   *flash
 	Error   string
 	Asset   string // stylesheet and scripts fingerprint
+	Seq     string // store.Seq as of this render, for the live refresh
 	Here    string // this page's URL, for the view switches to return to
 	List    bool   // a list, so the density switch applies
 	Compact bool
@@ -562,6 +563,7 @@ func pack(panels []panelView) (left, right []panelView) {
 }
 
 func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
+	seq := h.store.Seq()
 	q := r.URL.Query()
 	state := q.Get("state")
 	if state == "" {
@@ -614,6 +616,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			Flash:   flashFrom(q, 0, state, scope, search),
 			Error:   q.Get("err"),
 			Asset:   h.assetVer,
+			Seq:     seq,
 			Here:    r.URL.RequestURI(),
 			List:    true,
 			Compact: cookie(r, densityCookie) == "compact",
@@ -660,6 +663,7 @@ func mode(do, state string) string {
 // item is an item's own page — the target of its url — with the same
 // actions as the list.
 func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
+	seq := h.store.Seq()
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
 		http.NotFound(w, r)
@@ -695,6 +699,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Flash:  flashFrom(q, t.ID, "", "", ""),
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
+			Seq:    seq,
 			Here:   r.URL.RequestURI(),
 			Theme:  theme(r),
 			Wink:   winks(),

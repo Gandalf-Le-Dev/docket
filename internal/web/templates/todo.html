@@ -5,7 +5,7 @@
   <title>#{{.Item.ID}} {{.Item.Title}} · docket</title>
 </head>
 <body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">
-<div id="page" data-asset="{{.Asset}}">
+<div id="page" data-asset="{{.Asset}}" data-seq="{{.Seq}}">
 <div class="band">
   {{template "header" .}}
   {{template "nav" .}}

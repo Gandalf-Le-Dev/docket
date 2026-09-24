@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -127,6 +128,8 @@ func TestEventsStreamChanges(t *testing.T) {
 		t.Fatalf("Cache-Control %q", cc)
 	}
 
+	st.until(t, "event: seq")
+	st.until(t, "data: ")
 	id, _, err := s.AddTodo("secret title", "secret body", "", "", "x")
 	if err != nil {
 		t.Fatal(err)
@@ -188,6 +191,50 @@ func waitSubscribers(t *testing.T, s *store.Store, want int) {
 			t.Fatalf("%d subscribers, want %d", s.Subscribers(), want)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+var seqAttr = regexp.MustCompile(`id="page"[^>]* data-seq="([^"]+)"`)
+
+func pageSeq(t *testing.T, c *http.Client, url string) string {
+	t.Helper()
+	resp, err := c.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := seqAttr.FindStringSubmatch(readAll(t, resp))
+	if m == nil {
+		t.Fatalf("%s: #page without data-seq", url)
+	}
+	return m[1]
+}
+
+// A page carries the Seq it was rendered at and the stream opens with the
+// current one, so a page that missed a change between its render and its
+// stream opening sees the two differ.
+func TestSeqTellsAPageItIsBehind(t *testing.T) {
+	srv, s, c := eventsEnv(t, time.Hour)
+	s.AddTodo("item", "", "", "", "x")
+	for _, path := range []string{"/", "/todo/1"} {
+		if got := pageSeq(t, c, srv.URL+path); got != s.Seq() {
+			t.Fatalf("%s: data-seq %q, store %q", path, got, s.Seq())
+		}
+	}
+	rendered := pageSeq(t, c, srv.URL+"/")
+
+	st := openStream(t, c, srv)
+	if line := st.until(t, "event: "); line != "event: seq" {
+		t.Fatalf("first event %q", line)
+	}
+	if line := st.until(t, "data: "); line != "data: "+rendered {
+		t.Fatalf("first data %q, want the rendered %q", line, rendered)
+	}
+
+	s.AddTodo("between render and connect", "", "", "", "x")
+	st2 := openStream(t, c, srv)
+	st2.until(t, "event: seq")
+	if line := st2.until(t, "data: "); line == "data: "+rendered {
+		t.Fatalf("seq did not move past the render: %q", line)
 	}
 }
 
