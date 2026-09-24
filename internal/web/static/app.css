@@ -323,8 +323,16 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .drawer .facts { margin: 0 0 var(--space-5); padding: 0; border: 0; gap: var(--space-1) var(--space-4); }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 
+.text img { display: block; max-width: 100%; height: auto; margin: var(--space-2) 0;
+  border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
+
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
+.form textarea:has(+ .attach:not([hidden])) { margin-bottom: var(--space-2); }
+.attach { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.attach[hidden] { display: none; }
+.attach .upload-status { font-size: 12px; line-height: 16px; color: var(--danger); }
+textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2px; }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center;
   gap: var(--space-3); padding: var(--space-8) var(--space-5); }
 .empty .eye { color: var(--border-strong); }

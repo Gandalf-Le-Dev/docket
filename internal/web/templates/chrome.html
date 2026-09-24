@@ -1,7 +1,17 @@
 {{define "head"}}<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
+<script src="/static/app.js?v={{.Asset}}" defer></script>
 <link rel="icon" href="/static/mroc-lens.svg" type="image/svg+xml">{{end}}
+
+{{/* under a body field; hidden until app.js runs, since it does the uploading */}}
+{{define "attach"}}
+      <div class="attach" data-for="{{.}}" hidden>
+        <button type="button" class="btn btn--ghost btn--sm">Attach image</button>
+        <input type="file" accept="image/*" multiple hidden>
+        <span class="upload-status" role="status"></span>
+      </div>
+{{end}}
 
 {{/* the lens stands in for the o, on the baseline at the x-height; its
      opening is drawn separately so it can close for a wink */}}

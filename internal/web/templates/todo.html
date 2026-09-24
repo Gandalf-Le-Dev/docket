@@ -29,6 +29,7 @@
       <input type="text" id="e-title" name="title" value="{{.Item.Title}}" required autofocus>
       <label for="e-body">Body</label>
       <textarea id="e-body" name="body" rows="14">{{.Item.Body}}</textarea>
+      {{template "attach" "e-body"}}
       <label for="e-scope">Scope</label>
       <input type="text" id="e-scope" name="scope" value="{{.Item.Scope}}" list="scopes">
       <div class="acts">

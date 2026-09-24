@@ -17,6 +17,7 @@
     <input type="text" id="d-title" name="title" value="{{$t.Title}}" required autofocus>
     <label for="d-body">Body</label>
     <textarea id="d-body" name="body" rows="12">{{$t.Body}}</textarea>
+    {{template "attach" "d-body"}}
     <label for="d-scope">Scope</label>
     <input type="text" id="d-scope" name="scope" value="{{$t.Scope}}" list="scopes">
   </form>
@@ -84,6 +85,7 @@
     <input type="text" id="n-title" name="title" required autofocus placeholder="What needs doing">
     <label for="n-body">Details</label>
     <textarea id="n-body" name="body" rows="8" placeholder="Context, links, why it matters"></textarea>
+    {{template "attach" "n-body"}}
     <label for="n-scope">Scope</label>
     <input type="text" id="n-scope" name="scope" list="scopes" value="{{.In}}"
            placeholder="A project name, or personal">

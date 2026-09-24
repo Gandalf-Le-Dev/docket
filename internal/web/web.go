@@ -1,9 +1,11 @@
 // Package web is Docket's human surface: one server-rendered page for
-// reviewing the backlog. Plain forms, no build step, no JS. Every transient
-// state is a query parameter the server renders: ?open=<id> puts an entry in
-// the drawer, ?new=1 puts the new-entry form there, ?do=edit|drop turns an
-// entry into its form in place, ?rename=<scope> does the same to a panel's
-// name. Each of those is a normal page load, so back works and URLs share.
+// reviewing the backlog. Plain forms, no build step. The one script,
+// static/app.js, only uploads images pasted or dropped into a body; everything
+// else works without it. Every transient state is a query parameter the server
+// renders: ?open=<id> puts an entry in the drawer, ?new=1 puts the new-entry
+// form there, ?do=edit|drop turns an entry into its form in place,
+// ?rename=<scope> does the same to a panel's name. Each of those is a normal
+// page load, so back works and URLs share.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
@@ -60,7 +62,7 @@ type Handler struct {
 func NewHandler(s *store.Store) *Handler {
 	h := &Handler{
 		store:    s,
-		assetVer: hashAsset("static/app.css"),
+		assetVer: hashAsset("static/app.css", "static/app.js"),
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
 			"ago":       ago,
@@ -100,18 +102,22 @@ func cacheStatic(next http.Handler) http.Handler {
 	})
 }
 
-// AssetVer is the fingerprint templates append to the stylesheet's URL.
+// AssetVer is the fingerprint templates append to the stylesheet's and the
+// script's URLs.
 func (h *Handler) AssetVer() string { return h.assetVer }
 
-// hashAsset fingerprints an embedded file so its URL changes when it does.
+// hashAsset fingerprints embedded files so their URLs change when any does.
 // Without it the long cache below would serve last week's stylesheet.
-func hashAsset(name string) string {
-	b, err := staticFS.ReadFile(name)
-	if err != nil {
-		return "dev"
+func hashAsset(names ...string) string {
+	sum := sha256.New()
+	for _, name := range names {
+		b, err := staticFS.ReadFile(name)
+		if err != nil {
+			return "dev"
+		}
+		sum.Write(b)
 	}
-	sum := sha256.Sum256(b)
-	return hex.EncodeToString(sum[:4])
+	return hex.EncodeToString(sum.Sum(nil)[:4])
 }
 
 // dict lets a template pass both an item and the page around it to a
@@ -303,7 +309,7 @@ type chrome struct {
 	Scopes  []store.ScopeStats
 	Flash   *flash
 	Error   string
-	Asset   string // stylesheet fingerprint
+	Asset   string // stylesheet and script fingerprint
 	Here    string // this page's URL, for the view switches to return to
 	List    bool   // a list, so the density switch applies
 	Compact bool
@@ -314,7 +320,7 @@ type chrome struct {
 
 type loginData struct {
 	Error string
-	Asset string // stylesheet fingerprint
+	Asset string // stylesheet and script fingerprint
 	Theme string
 	Wink  template.CSS
 }
