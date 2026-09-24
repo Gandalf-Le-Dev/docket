@@ -541,12 +541,9 @@ func (s *Store) GetImage(id int64) (mime string, data []byte, err error) {
 	return mime, data, err
 }
 
-// PruneImages deletes the images no todo body has referenced for at least
-// grace. Each sweep marks every referenced image as seen now, so the grace
-// runs from the last sweep that found a reference, or from the upload for an
-// image that was never saved in a body. Bodies of closed todos count, so
-// their images stay. One transaction keeps a body saved mid-sweep from
-// losing an image it has just started to show.
+// PruneImages deletes images no body has referenced for grace. The grace runs
+// from the last reference a sweep saw, and one transaction keeps a body saved
+// mid-sweep from losing an image it has just started to show.
 func (s *Store) PruneImages(grace time.Duration) (int, error) {
 	if grace <= 0 {
 		return 0, ValidationError("grace must be positive")
