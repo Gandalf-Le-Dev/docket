@@ -209,6 +209,7 @@
     let failed = false;
     let later = 0;
     let failDelay = 1000;
+    let recent = [];
     let overtaken = false;
     let debounce = 0;
     let burst = 0;
@@ -309,6 +310,22 @@
         say("Updates waiting");
         return;
       }
+      // Whatever the state above says, live refreshes stay two seconds apart,
+      // the pace a steady trickle of changes gets anyway, and never exceed
+      // six in ten seconds: a mistake in that state must cost a few requests,
+      // not a request loop against the server.
+      const now = Date.now();
+      recent = recent.filter((t) => t > now - 10000);
+      const last = recent[recent.length - 1];
+      if (last && now - last < 2000) {
+        wait(last + 2000 - now);
+        return;
+      }
+      if (recent.length >= 6) {
+        wait(recent[0] + 10000 - now);
+        return;
+      }
+      recent.push(now);
       refresh();
     }
     const poke = () => setTimeout(attempt);
