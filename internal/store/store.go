@@ -42,8 +42,9 @@ CREATE TABLE IF NOT EXISTS token (
   revoked_at TEXT
 );
 
+-- AUTOINCREMENT so a pruned id is never reused: /image/N is cached as immutable.
 CREATE TABLE IF NOT EXISTS image (
-  id         INTEGER PRIMARY KEY,
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
   sha256     TEXT NOT NULL UNIQUE,
   mime       TEXT NOT NULL,
   data       BLOB NOT NULL,

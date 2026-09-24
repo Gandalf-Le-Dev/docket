@@ -414,6 +414,31 @@ func TestPruneImages(t *testing.T) {
 	}
 }
 
+// A browser caches /image/N forever, so a pruned id must never come back
+// holding another picture.
+func TestPrunedImageIDNotReused(t *testing.T) {
+	s := testStore(t)
+	advance := setClock(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	if _, err := s.AddImage(tinyPNG(t, color.Gray{Y: 1})); err != nil {
+		t.Fatal(err)
+	}
+	last, err := s.AddImage(tinyPNG(t, color.Gray{Y: 2}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	advance(2 * time.Hour)
+	if n, err := s.PruneImages(time.Hour); err != nil || n != 2 {
+		t.Fatalf("prune: %d %v", n, err)
+	}
+	next, err := s.AddImage(tinyPNG(t, color.Gray{Y: 3}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next <= last {
+		t.Fatalf("new image got id %d, pruned ids went up to %d", next, last)
+	}
+}
+
 func TestImageValidation(t *testing.T) {
 	s := testStore(t)
 	var ve ValidationError
