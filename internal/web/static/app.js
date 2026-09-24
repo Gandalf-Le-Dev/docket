@@ -1,7 +1,8 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
-// the text as the marker the server draws. Bodies arrive with htmx swaps as
-// well as with the page, so every listener sits on the document and finds its
-// field when the event comes, rather than binding to fields once at load.
+// the text as the marker the server draws; and a swap that leaves what it
+// brought out of sight scrolls to it. Bodies arrive with htmx swaps as well as
+// with the page, so every listener sits on the document and finds its field
+// when the event comes, rather than binding to fields once at load.
 (() => {
   "use strict";
 
@@ -140,6 +141,16 @@
     }
     field.ta.focus();
     upload(field.ta, field.status, files);
+  });
+
+  // Swaps from the list keep its scroll, which can leave what they brought out
+  // of sight: a failed action's message at the top of the list, or the drawer,
+  // which a narrow screen stacks above the list.
+  document.addEventListener("htmx:afterSettle", () => {
+    const shown = document.querySelector("#page .error") || document.querySelector(".drawer");
+    if (!shown) return;
+    const { top } = shown.getBoundingClientRect();
+    if (top < 0 || top > window.innerHeight) shown.scrollIntoView();
   });
 
   // Capture, and stop there: htmx submits a boosted form from its own

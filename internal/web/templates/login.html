@@ -15,7 +15,9 @@
     <h1 class="heading" style="margin: 0 0 var(--space-2)">Sign in</h1>
     <p class="body muted" style="margin: 0 0 var(--space-5)">
       Paste a review token. It is kept in a cookie on this device, so you do this once.</p>
-    <form method="post" action="/login">
+    {{/* never boosted: the back button can restore this page into a boosted
+         one, and signing in must load the backlog whole */}}
+    <form method="post" action="/login" hx-boost="false">
       <label for="token">Review token</label>
       <input type="password" id="token" name="token" autocomplete="current-password" autofocus>
       <p><button type="submit" class="btn btn--primary">Sign in</button></p>

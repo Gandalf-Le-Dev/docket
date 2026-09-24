@@ -1,9 +1,9 @@
 {{define "drawer"}}{{$t := .T}}{{$s := .S}}
 {{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
-<aside class="drawer" aria-label="Entry {{$t.ID}}">
+<aside class="drawer" aria-label="Entry {{$t.ID}}" hx-swap="outerHTML show:none">
   <header>
     {{if $t.Scope}}<span class="crumb{{template "tint" (index $s.Hues $t.Scope)}}">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
-    <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page">#{{$t.ID}}</a>
+    <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page" hx-swap="outerHTML">#{{$t.ID}}</a>
     <a class="icon close" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
   </header>
 
@@ -13,6 +13,7 @@
     {{template "back" $s}}
     <input type="hidden" name="back_open" value="{{$t.ID}}">
     <input type="hidden" name="back_do" value="edit">
+    {{template "form-error" $s}}
     <label for="d-title">Title</label>
     <input type="text" id="d-title" name="title" value="{{$t.Title}}" required autofocus>
     <label for="d-body">Body</label>
@@ -27,6 +28,7 @@
   </footer>
   {{else}}
   <div class="body">
+    {{template "form-error" $s}}
     <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
     <dl class="facts">
       <dt>Filed</dt><dd title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</dd>
@@ -73,7 +75,7 @@
 {{end}}
 
 {{define "new-drawer"}}
-<aside class="drawer" aria-label="New entry">
+<aside class="drawer" aria-label="New entry" hx-swap="outerHTML show:none">
   <header>
     <span class="ui">New entry</span>
     <a class="icon close" href="{{query "state" .State "scope" .Scope "q" .Query}}" aria-label="Close">✕</a>
@@ -81,6 +83,7 @@
   <form id="drawer-new" class="body form" method="post" action="/add">
     {{template "back" .}}
     <input type="hidden" name="back_new" value="1">
+    {{template "form-error" .}}
     <label for="n-title">Title</label>
     <input type="text" id="n-title" name="title" required autofocus placeholder="What needs doing">
     <label for="n-body">Details</label>
@@ -96,3 +99,7 @@
   </footer>
 </aside>
 {{end}}
+
+{{/* while the drawer is open, a failed action's message goes in it, beside
+     the form it came back to, where it is in sight whatever the list's scroll */}}
+{{define "form-error"}}{{with .Error}}<div class="error">{{.}}</div>{{end}}{{end}}

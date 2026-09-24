@@ -1,11 +1,18 @@
 // Package web is Docket's human surface: one server-rendered page for
-// reviewing the backlog. Plain forms, no build step. The one script,
-// static/app.js, only uploads images pasted or dropped into a body; everything
-// else works without it. Every transient state is a query parameter the server
-// renders: ?open=<id> puts an entry in the drawer, ?new=1 puts the new-entry
-// form there, ?do=edit|drop turns an entry into its form in place,
-// ?rename=<scope> does the same to a panel's name. Each of those is a normal
-// page load, so back works and URLs share.
+// reviewing the backlog. Plain links and forms, no build step. Every transient
+// state is a query parameter the server renders: ?open=<id> puts an entry in
+// the drawer, ?new=1 puts the new-entry form there, ?do=edit|drop turns an
+// entry into its form in place, ?rename=<scope> does the same to a panel's
+// name. Each of those URLs renders the whole page, so back works and URLs
+// share.
+//
+// htmx (static/htmx.min.js, vendored) boosts those links and forms: it fetches
+// the same whole page, swaps in its #page and pushes the URL, so a click never
+// reloads and, where hx-swap says show:none, keeps the list's scroll. The
+// server renders no fragments; the one thing it does for htmx is send a
+// signed-out request to the login page whole (see toLogin). The page's own
+// script, static/app.js, uploads images pasted or dropped into a body. Without
+// either script every link and form still works as a page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented

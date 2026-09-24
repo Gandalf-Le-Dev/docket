@@ -196,16 +196,21 @@ does not forward those headers.
 
 ## The web page
 
-One page, server-rendered, with no build step. It has one small script, and it
-only uploads images (see [Images](#images)). Everything else works without it.
+One page, server-rendered, with no build step. Links and forms update the page in
+place with [htmx](https://htmx.org), which ships inside the binary: nothing
+reloads, and opening or closing an entry keeps the list where you scrolled it.
+Every view still has its own URL, which renders the whole page on its own, so the
+back button works and you can paste the URL to someone. One more small script
+uploads images (see [Images](#images)). Without JavaScript, every link and form
+still works as a normal page load.
 Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope
 with nothing open does not exist on the page, but the Done and Dropped tabs still
 group closed entries by scope.
 
-Clicking an entry opens it in a drawer beside the list. The drawer is a link to
-`/?open=<id>`, so it is a normal page load, the back button works, and you can
-paste the URL to someone. The `#<id>` in the drawer's header opens the entry's own
+Clicking an entry opens it in a drawer beside the list. The drawer's URL is
+`/?open=<id>`, so the back button closes it, and you can paste the URL to
+someone. The `#<id>` in the drawer's header opens the entry's own
 page at `/todo/<id>`, with the same header and tabs as the list. A click anywhere
 outside the drawer closes it.
 

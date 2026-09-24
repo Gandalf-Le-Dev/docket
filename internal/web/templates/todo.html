@@ -4,7 +4,8 @@
   {{template "head" .}}
   <title>#{{.Item.ID}} {{.Item.Title}} · docket</title>
 </head>
-<body>
+<body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">
+<div id="page">
 <div class="band">
   {{template "header" .}}
   {{template "nav" .}}
@@ -88,5 +89,6 @@
   </article>
 </div>
 {{template "scopes-list" .}}
+</div>
 </body>
 </html>

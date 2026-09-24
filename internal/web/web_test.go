@@ -669,6 +669,58 @@ func TestFormsOpenInPlace(t *testing.T) {
 	}
 }
 
+// Links and forms swap #page in place, and each page has one to swap; the
+// ones that act beside the list keep its scroll. The two forms that must load
+// a whole page are never boosted.
+func TestPagesSwapInPlace(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	resp, err := c.Get(srv.URL + "/login")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, `action="/login" hx-boost="false"`) {
+		t.Fatalf("login form boosted:\n%s", body)
+	}
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("first", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	keep := `hx-swap="outerHTML show:none"`
+	for path, wants := range map[string][]string{
+		"/":        {`id="page"`, `<section class="panel" ` + keep, `action="/theme" aria-label="Theme" hx-boost="false"`},
+		"/?open=1": {`<aside class="drawer" aria-label="Entry 1" ` + keep, `aria-hidden="true"` + "\n  " + keep},
+		"/?new=1":  {`<aside class="drawer" aria-label="New entry" ` + keep},
+		"/todo/1":  {`id="page"`},
+	} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := readAll(t, resp)
+		wants = append(wants, `<body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">`)
+		for _, want := range wants {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s missing %q:\n%s", path, want, body)
+			}
+		}
+	}
+
+	// A failed save comes back to the drawer, and says why there, where the
+	// list's scroll cannot hide it.
+	resp, err = c.PostForm(srv.URL+"/todo/update", url.Values{
+		"id": {"1"}, "title": {" "}, "back_open": {"1"}, "back_do": {"edit"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := readAll(t, resp)
+	drawer := body[strings.Index(body, `<aside class="drawer"`):]
+	if strings.Count(body, `class="error"`) != 1 || !strings.Contains(drawer, `<div class="error">title must not be empty</div>`) {
+		t.Fatalf("failed save's message not in the drawer:\n%s", body)
+	}
+}
+
 // A scope with nothing open does not exist on the Open tab: no panel, no
 // suggestion. Its closed entries still group under it on the Done tab.
 func TestScopeWithNothingOpenIsGone(t *testing.T) {
@@ -738,7 +790,7 @@ func TestViewSwitches(t *testing.T) {
 	}
 
 	resp, body := post("/density", "compact", "/?scope=pilot")
-	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `<body class="compact">`) ||
+	if resp.Request.URL.RequestURI() != "/?scope=pilot" || !strings.Contains(body, `<div id="page" class="with-drawer compact">`) ||
 		!strings.Contains(body, `<a class="name tint hue-0"`) {
 		t.Fatalf("compact landed on %s:\n%s", resp.Request.URL, body)
 	}

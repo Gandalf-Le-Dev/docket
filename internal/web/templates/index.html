@@ -4,16 +4,17 @@
   {{template "head" .}}
   <title>docket</title>
 </head>
-<body{{if .Compact}} class="compact"{{end}}>
-<div class="with-drawer{{if or .New .Open}} has-drawer{{end}}">
+<body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">
+<div id="page" class="with-drawer{{if or .New .Open}} has-drawer{{end}}{{if .Compact}} compact{{end}}">
 <div class="main">
-{{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"></a>{{end}}
+{{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"
+  hx-swap="outerHTML show:none"></a>{{end}}
 <div class="band">
   {{template "header" .}}
   {{template "nav" .}}
 </div>
 {{template "flash" .}}
-{{if .Error}}<div class="error">{{.Error}}</div>{{end}}
+{{if and .Error (not .New) (not .Open)}}<div class="error">{{.Error}}</div>{{end}}
 
 {{if or .Left .Right}}
 <div class="cols">
@@ -50,10 +51,10 @@
 </html>
 
 {{define "panel"}}{{$p := .P}}{{$s := .S}}
-<section class="panel">
+<section class="panel" hx-swap="outerHTML show:none">
   <header>
     {{if eq $s.Rename $p.Name}}
-    <form class="rename" method="post" action="/scope/rename">
+    <form class="rename" method="post" action="/scope/rename" hx-swap="outerHTML">
       {{template "back" $s}}
       <input type="hidden" name="from" value="{{$p.Scope}}">
       <input class="name-input" type="text" name="to" value="{{$p.Scope}}" list="scopes" required
@@ -63,7 +64,8 @@
       <a class="btn btn--ghost btn--sm" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}">Cancel</a>
     </form>
     {{else}}
-    <a class="name{{template "tint" (index $s.Hues $p.Scope)}}" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}">{{$p.Name}}</a>
+    <a class="name{{template "tint" (index $s.Hues $p.Scope)}}" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}"
+       hx-swap="outerHTML">{{$p.Name}}</a>
     <span class="counts">{{$p.Counts}}</span>
     <span class="tools">
       <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "new" "1" "in" $p.Scope}}">+ in {{$p.Name}}</a>
