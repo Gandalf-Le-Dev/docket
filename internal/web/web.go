@@ -785,6 +785,7 @@ func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": ve.Error()})
 		return
 	case err != nil:
+		log.Printf("web: store image: %v", err)
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "storage failure"})
 		return
 	}
