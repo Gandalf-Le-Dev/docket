@@ -207,6 +207,8 @@
     let force = false; // the stream was refused, and only a refresh says why
     let running = false;
     let failed = false;
+    let later = 0;
+    let failDelay = 1000;
     let overtaken = false;
     let debounce = 0;
     let burst = 0;
@@ -297,7 +299,7 @@
     }
 
     function attempt() {
-      if (running || debounce || document.hidden) return;
+      if (running || debounce || later || document.hidden) return;
       if (!behind()) {
         say("");
         return;
@@ -310,6 +312,12 @@
       refresh();
     }
     const poke = () => setTimeout(attempt);
+    function wait(ms) {
+      later = setTimeout(() => {
+        later = 0;
+        attempt();
+      }, ms);
+    }
 
     // A burst, an agent filing ten items say, becomes one refresh, and a
     // steady trickle still refreshes every two seconds.
@@ -326,9 +334,9 @@
       );
     }
 
-    // A refresh that fails is not tried again at once, which would spin
-    // against a server that is down; the next change or reconnect brings
-    // another.
+    // A refresh that fails is tried again, backing off, for as long as the
+    // page stays behind: a server mid-deploy answers again soon enough, and
+    // the change it was for may be the only one for a while.
     function refresh() {
       const forced = force;
       force = false;
@@ -356,7 +364,13 @@
           running = false;
           if (swapped) adopt();
           else force = force || forced;
-          if (!failed) poke();
+          if (failed) {
+            wait(failDelay);
+            failDelay = Math.min(failDelay * 2, 30000);
+            return;
+          }
+          failDelay = 1000;
+          poke();
         });
     }
 
