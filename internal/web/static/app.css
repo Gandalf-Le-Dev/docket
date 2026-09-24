@@ -141,7 +141,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .hdr { --lockup: 46px; display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-5) var(--space-5) var(--space-4); }
 .wm { font-size: var(--lockup); font-weight: 600; letter-spacing: -0.03em; line-height: 1;
-  color: var(--ink); text-decoration: none; white-space: nowrap; }
+  color: var(--ink); text-decoration: none; }
 /* The glyph fills 40 of its 48 units, so a box of 0.66em draws it at about
    the x-height; the drop puts the glyph's foot, not its box's, on the baseline. */
 .wm .o { display: inline-block; width: 0.66em; height: 0.66em; margin: 0 0.02em;
@@ -229,8 +229,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .panel > header .name { font-size: 21px; line-height: 28px; font-weight: 600;
   letter-spacing: -0.012em; color: var(--ink); text-decoration: none; }
 .panel > header .name:hover { text-decoration: underline; text-underline-offset: 3px; }
-.panel > header .counts { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted);
-  min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.panel > header .counts { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 .panel > header .tools { margin-left: auto; display: flex; gap: var(--space-1); opacity: 0;
   transition: opacity 120ms ease-out; }
 .panel:hover > header .tools, .panel:focus-within > header .tools { opacity: 1; }
@@ -366,6 +365,7 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
   .col { width: 100%; }
   .col:empty { display: none; }
   .panel { margin-bottom: var(--space-4); }
+  .panel > header .counts { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   /* stretched, not sized to content: the list is as wide as the window,
      never as wide as the header would like to be */
   .with-drawer { flex-direction: column; align-items: stretch; }
@@ -375,6 +375,7 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
     border-bottom: var(--hairline) solid var(--border); box-shadow: none; }
   .drawer .body { overflow: visible; }
   .hdr { --lockup: 32px; gap: var(--space-2); padding: var(--space-4); }
+  .wm { white-space: nowrap; }
   /* the search field gives up width before anything spills off the side */
   .hdr .right { min-width: 0; }
   .hdr .right > * { flex: none; }
