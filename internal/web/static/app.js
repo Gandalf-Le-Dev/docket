@@ -242,14 +242,16 @@
 
     // A form someone is filling in, which a swap would throw away. One that
     // is open but untouched and unfocused is not held: the refresh brings it
-    // back with the item's new values.
+    // back with the item's new values. The search field holds only while it
+    // differs from the query shown, focused or not: focus alone survives the
+    // swap (see settle), unsubmitted text would not.
     function held() {
       const active = document.activeElement;
       if (popoverOpen()) return true;
       for (const form of document.querySelectorAll("#page form")) {
         if (form.getAttribute("role") === "search") {
           const q = form.querySelector("input[type=search]");
-          if (q && q === active && q.value !== q.defaultValue) return true;
+          if (q && q.value !== q.defaultValue) return true;
           continue;
         }
         if ((form.dataset.uploads || "0") !== "0") return true;
@@ -477,6 +479,8 @@
       poke();
     });
     document.addEventListener("focusout", poke);
+    // typing a search back to what it was releases the hold without a blur
+    document.addEventListener("input", poke);
     // toggle does not bubble, and closing a popover moves no focus
     document.addEventListener("toggle", poke, true);
 
