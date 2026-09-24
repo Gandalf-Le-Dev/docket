@@ -437,6 +437,7 @@ type flash struct {
 	Text      string
 	ID        int64
 	Undo      string // form action that reverses it, or ""
+	Token     string // which close Undo reverses, see store.UndoClose
 	BackID    int64
 	BackState string
 	BackScope string
@@ -448,7 +449,7 @@ func flashFrom(q url.Values, backID int64, backState, backScope, backQuery strin
 	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope, BackQuery: backQuery}
 	switch q.Get("did") {
 	case "closed":
-		f.Undo = "/todo/undo"
+		f.Undo, f.Token = "/todo/undo", q.Get("undo")
 		if q.Get("outcome") == "dropped" {
 			f.Text = "Dropped."
 		} else {
@@ -762,12 +763,13 @@ func (h *Handler) add(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) close(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
 	outcome := r.FormValue("outcome")
+	var undo string
 	if err == nil {
 		var t store.Todo
-		t, err = h.store.CloseTodo(id, outcome, r.FormValue("reason"))
+		t, undo, err = h.store.CloseTodo(id, outcome, r.FormValue("reason"))
 		outcome = t.State
 	}
-	back(w, r, err, did("closed", id, "outcome", outcome))
+	back(w, r, err, did("closed", id, "outcome", outcome, "undo", undo))
 }
 
 func (h *Handler) reopen(w http.ResponseWriter, r *http.Request) {
@@ -779,12 +781,13 @@ func (h *Handler) reopen(w http.ResponseWriter, r *http.Request) {
 	back(w, r, err, did("reopened", id))
 }
 
-// undo reverses a close from its toast: the entry comes back exactly as it
-// was, in the drawer or on the page it was closed from.
+// undo reverses the close its toast reported, and no later one: the entry
+// comes back exactly as it was, in the drawer or on the page it was closed
+// from.
 func (h *Handler) undo(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
 	if err == nil {
-		_, err = h.store.UndoClose(id)
+		_, err = h.store.UndoClose(id, r.FormValue("undo"))
 	}
 	d := did("restored", id)
 	if r.FormValue("back_id") == "" {

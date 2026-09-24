@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"html"
 	"image"
 	"image/color"
 	"image/png"
@@ -13,6 +14,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -577,15 +579,32 @@ func TestUndoFromToast(t *testing.T) {
 	login(t, c, srv, review)
 	id, _, _ := s.AddTodo("undo me", "why\n\n— closed (done): an older verdict", "pilot", "test", "t")
 	before, _ := s.GetTodo(id)
+	post := func(path string, form url.Values) (*http.Response, string) {
+		t.Helper()
+		resp, err := c.PostForm(srv.URL+path, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, readAll(t, resp)
+	}
+	// toastUndo is the form the toast offers, as a browser would submit it.
+	toastUndo := func(body string) url.Values {
+		t.Helper()
+		toast := body[strings.Index(body, `<div id="toasts" class="toasts" role="status">`):]
+		form := url.Values{}
+		for _, m := range regexp.MustCompile(`name="(\w+)" value="([^"]*)"`).FindAllStringSubmatch(toast, -1) {
+			form.Set(m[1], html.UnescapeString(m[2]))
+		}
+		if form.Get("undo") == "" {
+			t.Fatalf("toast has no undo token:\n%s", toast)
+		}
+		return form
+	}
 
-	resp, err := c.PostForm(srv.URL+"/todo/close", url.Values{
+	_, body := post("/todo/close", url.Values{
 		"id": {"1"}, "outcome": {"dropped"}, "reason": {"not now"},
 		"back_state": {"open"}, "back_scope": {"pilot"}, "back_q": {"undo"},
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body := readAll(t, resp)
 	toast := body[strings.Index(body, `<div id="toasts" class="toasts" role="status">`):]
 	for _, want := range []string{
 		`<div hx-swap-oob="innerHTML:#toasts"><div class="toast">`,
@@ -603,13 +622,7 @@ func TestUndoFromToast(t *testing.T) {
 		t.Fatalf("dropped entry still listed:\n%s", body)
 	}
 
-	resp, err = c.PostForm(srv.URL+"/todo/undo", url.Values{
-		"id": {"1"}, "back_state": {"open"}, "back_scope": {"pilot"}, "back_q": {"undo"},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	body = readAll(t, resp)
+	resp, body := post("/todo/undo", toastUndo(body))
 	if q := resp.Request.URL.Query(); q.Get("open") != "1" || q.Get("scope") != "pilot" || q.Get("q") != "undo" ||
 		!strings.Contains(body, "Restored #1.") || !strings.Contains(body, `class="entry on"`) {
 		t.Fatalf("undo landed on %s:\n%s", resp.Request.URL, body)
@@ -618,15 +631,28 @@ func TestUndoFromToast(t *testing.T) {
 		t.Fatalf("undo is not exact:\n got  %+v\n want %+v", got, before)
 	}
 
+	// A toast undoes its own close only: once an agent has closed the entry
+	// again, the web's Undo is refused and the agent's verdict stands.
+	_, body = post("/todo/close", url.Values{"id": {"1"}, "outcome": {"dropped"}, "reason": {"from the web"}})
+	first := toastUndo(body)
+	time.Sleep(time.Millisecond)
+	agent, _, err := s.CloseTodo(id, "done", "an agent finished it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, body = post("/todo/undo", first); !strings.Contains(body, "closed again since") {
+		t.Fatalf("stale undo not refused:\n%s", body)
+	}
+	if got, _ := s.GetTodo(id); got != agent {
+		t.Fatalf("stale undo changed the entry: %+v", got)
+	}
+
 	// Closed on its own page, the entry comes back there; a second undo has
 	// nothing left to reverse and says so.
-	c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "back_id": {"1"}})
-	for i, want := range []string{"Restored #1.", "cannot be undone"} {
-		resp, err = c.PostForm(srv.URL+"/todo/undo", url.Values{"id": {"1"}, "back_id": {"1"}})
-		if err != nil {
-			t.Fatal(err)
-		}
-		body = readAll(t, resp)
+	_, body = post("/todo/close", url.Values{"id": {"1"}, "back_id": {"1"}})
+	form := toastUndo(body)
+	for i, want := range []string{"Restored #1.", "changed since it was closed"} {
+		resp, body = post("/todo/undo", form)
 		if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, want) {
 			t.Fatalf("undo %d landed on %s without %q:\n%s", i+1, resp.Request.URL, want, body)
 		}
@@ -835,7 +861,7 @@ func TestScopeWithNothingOpenIsGone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CloseTodo(id, "done", ""); err != nil {
+	if _, _, err := s.CloseTodo(id, "done", ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := s.AddTodo("live", "", "pilot", "test", "t"); err != nil {

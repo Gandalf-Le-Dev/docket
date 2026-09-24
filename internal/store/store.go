@@ -352,22 +352,23 @@ func updateTodo(q querier, id int64, u TodoUpdate) (Todo, error) {
 // CloseTodo records a verdict: done (default) or dropped. Dropped is distinct
 // from done because "not going to do this" is worth remembering. A non-empty
 // reason is appended to the body so it survives with the item. What the close
-// replaced is kept for a while, so UndoClose can reverse it.
-func (s *Store) CloseTodo(id int64, outcome, reason string) (Todo, error) {
+// replaced is kept for a while, and undo is the token UndoClose takes to
+// reverse this close and no other.
+func (s *Store) CloseTodo(id int64, outcome, reason string) (t Todo, undo string, err error) {
 	if outcome == "" {
 		outcome = "done"
 	}
 	if outcome != "done" && outcome != "dropped" {
-		return Todo{}, ValidationError("outcome must be done or dropped")
+		return Todo{}, "", ValidationError("outcome must be done or dropped")
 	}
 	tx, err := s.db.Begin()
 	if err != nil {
-		return Todo{}, err
+		return Todo{}, "", err
 	}
 	defer tx.Rollback()
 	before, err := getTodo(tx, id)
 	if err != nil {
-		return Todo{}, err
+		return Todo{}, "", err
 	}
 	body := before.Body
 	if reason = strings.TrimSpace(reason); reason != "" {
@@ -376,30 +377,41 @@ func (s *Store) CloseTodo(id int64, outcome, reason string) (Todo, error) {
 		}
 		body += "— closed (" + outcome + "): " + reason
 	}
-	t, err := updateTodo(tx, id, TodoUpdate{Body: &body, State: &outcome})
+	t, err = updateTodo(tx, id, TodoUpdate{Body: &body, State: &outcome})
 	if err != nil {
-		return Todo{}, err
+		return Todo{}, "", err
 	}
-	if _, err := tx.Exec("DELETE FROM closing WHERE at < ?", clock().Add(-UndoWindow).UTC().Format(time.RFC3339)); err != nil {
-		return Todo{}, err
+	if _, err := tx.Exec("DELETE FROM closing WHERE at < ?", undoCutoff()); err != nil {
+		return Todo{}, "", err
 	}
+	undo = clock().UTC().Format(closeStamp)
 	if _, err := tx.Exec("INSERT INTO closing (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
 		id, before.Body, before.State, before.UpdatedAt,
-		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, t.UpdatedAt); err != nil {
-		return Todo{}, err
+		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, undo); err != nil {
+		return Todo{}, "", err
 	}
-	return t, tx.Commit()
+	return t, undo, tx.Commit()
 }
+
+// closeStamp is when a close happened, to the nanosecond so that two closes
+// of one item never share it, and fixed width so the text sorts as the time.
+const closeStamp = "2006-01-02T15:04:05.000000000Z07:00"
+
+func undoCutoff() string { return clock().Add(-UndoWindow).UTC().Format(closeStamp) }
 
 // UndoWindow is how long a close stays undoable. The web page offers Undo for
 // seconds; the rest is slack for a page left open, not an archive.
 const UndoWindow = 24 * time.Hour
 
-// UndoClose puts an item back exactly as its latest close found it: body,
-// state and both timestamps. Reopening instead keeps the verdict note as
-// history. Once anything else has written to the item, or UndoWindow has
-// passed, there is nothing left to undo.
-func (s *Store) UndoClose(id int64) (Todo, error) {
+// UndoClose puts an item back exactly as the close that returned undo found
+// it: body, state and both timestamps. Reopening instead keeps the verdict
+// note as history. A later close, any other write to the item, or UndoWindow
+// passing leaves that close with nothing to undo, and the error says which.
+func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
+	at, err := time.Parse(closeStamp, undo)
+	if err != nil || at.Before(clock().Add(-UndoWindow)) {
+		return Todo{}, ValidationError(fmt.Sprintf("nothing to undo on #%d: its undo has expired", id))
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		return Todo{}, err
@@ -410,14 +422,16 @@ func (s *Store) UndoClose(id int64) (Todo, error) {
 		return Todo{}, err
 	}
 	var closed sql.NullString
-	cutoff := clock().Add(-UndoWindow).UTC().Format(time.RFC3339)
-	err = tx.QueryRow("SELECT body, state, updated_at, closed_at FROM closing WHERE todo_id = ? AND at >= ?", id, cutoff).
-		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed)
-	if errors.Is(err, sql.ErrNoRows) {
+	var latest string
+	err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at FROM closing WHERE todo_id = ?", id).
+		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &latest)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
 		return Todo{}, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
-	}
-	if err != nil {
+	case err != nil:
 		return Todo{}, err
+	case latest != undo:
+		return Todo{}, ValidationError(fmt.Sprintf("#%d has been closed again since, so this undo no longer applies", id))
 	}
 	t.ClosedAt = closed.String
 	if _, err := tx.Exec("UPDATE todo SET body = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",

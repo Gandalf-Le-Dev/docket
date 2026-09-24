@@ -51,7 +51,7 @@ func TestAddAndDedupe(t *testing.T) {
 	}
 
 	// Once closed, the same title files fresh — dedupe only guards open items.
-	if _, err := s.CloseTodo(id, "done", ""); err != nil {
+	if _, _, err := s.CloseTodo(id, "done", ""); err != nil {
 		t.Fatal(err)
 	}
 	id4, dup, err := s.AddTodo("Fix the thing", "", "hopbox", "", "box-1")
@@ -85,7 +85,7 @@ func TestCloseReopenAndReason(t *testing.T) {
 	s := testStore(t)
 	id, _, _ := s.AddTodo("item", "original body", "", "", "x")
 
-	closed, err := s.CloseTodo(id, "dropped", "not worth it")
+	closed, _, err := s.CloseTodo(id, "dropped", "not worth it")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +96,7 @@ func TestCloseReopenAndReason(t *testing.T) {
 		t.Fatalf("reason not appended: %q", closed.Body)
 	}
 
-	if _, err := s.CloseTodo(id, "bogus", ""); err == nil {
+	if _, _, err := s.CloseTodo(id, "bogus", ""); err == nil {
 		t.Fatal("bad outcome accepted")
 	}
 
@@ -117,12 +117,20 @@ func TestUndoClose(t *testing.T) {
 	advance := setClock(t, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	id, _, _ := s.AddTodo("item", "why\n\n— closed (dropped): an older verdict", "a", "", "x")
 	before, _ := s.GetTodo(id)
-	var ve ValidationError
 
-	undo := func(want Todo) {
+	closeIt := func(outcome, reason string) string {
 		t.Helper()
 		advance(time.Minute)
-		got, err := s.UndoClose(id)
+		_, undo, err := s.CloseTodo(id, outcome, reason)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return undo
+	}
+	undo := func(token string, want Todo) {
+		t.Helper()
+		advance(time.Minute)
+		got, err := s.UndoClose(id, token)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,52 +139,54 @@ func TestUndoClose(t *testing.T) {
 			t.Fatalf("undo\n got    %+v\n stored %+v\n want   %+v", got, stored, want)
 		}
 	}
-	for _, reason := range []string{"not now", ""} {
-		advance(time.Minute)
-		if _, err := s.CloseTodo(id, "dropped", reason); err != nil {
-			t.Fatal(err)
+	refused := func(token, why string) {
+		t.Helper()
+		var ve ValidationError
+		if _, err := s.UndoClose(id, token); !errors.As(err, &ve) || !strings.Contains(err.Error(), why) {
+			t.Fatalf("undo not refused for %q: %v", why, err)
 		}
-		undo(before)
 	}
-	if _, err := s.UndoClose(id); !errors.As(err, &ve) {
-		t.Fatalf("undo twice: %v", err)
+
+	for _, reason := range []string{"not now", ""} {
+		undo(closeIt("dropped", reason), before)
 	}
+	token := closeIt("done", "")
+	undo(token, before)
+	refused(token, "changed since")
 
 	// A done item dropped later goes back to done, closed when it was.
-	advance(time.Minute)
-	done, _ := s.CloseTodo(id, "done", "shipped")
-	advance(time.Minute)
-	s.CloseTodo(id, "dropped", "reverted upstream")
-	undo(done)
+	first := closeIt("done", "shipped")
+	done, _ := s.GetTodo(id)
+	second := closeIt("dropped", "reverted upstream")
+	// An undo belongs to its own close: the first toast cannot reverse the second.
+	refused(first, "closed again")
+	undo(second, done)
 
-	// Any other write since the close leaves nothing to undo.
+	// Any other write since the close leaves nothing to undo; so does time.
 	title := "edited"
-	for name, write := range map[string]func(){
-		"edit":   func() { s.UpdateTodo(id, TodoUpdate{Title: &title}) },
-		"rename": func() { s.RenameScope("a", "b"); s.RenameScope("b", "a") },
-		"window": func() { advance(UndoWindow + time.Minute) },
+	open := "open"
+	for _, write := range []func(){
+		func() { s.UpdateTodo(id, TodoUpdate{Title: &title}) },
+		func() { s.RenameScope("a", "b"); s.RenameScope("b", "a") },
 	} {
-		if _, err := s.CloseTodo(id, "done", ""); err != nil {
-			t.Fatal(err)
-		}
+		token := closeIt("done", "")
 		write()
-		if _, err := s.UndoClose(id); !errors.As(err, &ve) {
-			t.Fatalf("undo after %s: %v", name, err)
-		}
-		open := "open"
+		refused(token, "changed since")
 		s.UpdateTodo(id, TodoUpdate{State: &open})
 	}
+	token = closeIt("done", "")
+	advance(UndoWindow + time.Minute)
+	refused(token, "expired")
+	refused("", "expired")
 
 	// A close past the window is forgotten by the next one, not kept forever.
-	s.CloseTodo(id, "done", "")
-	advance(UndoWindow + time.Minute)
 	other, _, _ := s.AddTodo("other", "", "", "", "x")
-	s.CloseTodo(other, "done", "")
+	_, fresh, _ := s.CloseTodo(other, "done", "")
 	var n int
 	if err := s.db.QueryRow("SELECT COUNT(*) FROM closing").Scan(&n); err != nil || n != 1 {
 		t.Fatalf("closing rows: %d %v", n, err)
 	}
-	if _, err := s.UndoClose(999); !errors.Is(err, ErrNotFound) {
+	if _, err := s.UndoClose(999, fresh); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("undo unknown: %v", err)
 	}
 }
@@ -298,7 +308,7 @@ func TestScopeSummaries(t *testing.T) {
 			t.Fatal(err)
 		}
 		if tc.state != "open" {
-			if _, err := s.CloseTodo(id, tc.state, ""); err != nil {
+			if _, _, err := s.CloseTodo(id, tc.state, ""); err != nil {
 				t.Fatal(err)
 			}
 		}

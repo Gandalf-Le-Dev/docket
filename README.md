@@ -216,7 +216,8 @@ outside the drawer closes it.
 
 What an action did shows for a few seconds in a small message at the foot of the
 window. After Done or Drop it has an Undo button, which puts the entry back exactly
-as it was, body included. Undo works for a day, until anything else changes the entry.
+as it was, body included. Undo works for a day, and only until anything else changes
+the entry or it is closed again.
 Reopen, on a closed entry, is different: it keeps the verdict in the body as
 history.
 

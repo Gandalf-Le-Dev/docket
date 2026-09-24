@@ -99,6 +99,7 @@
   {{- if .Undo}}
   <form method="post" action="{{.Undo}}" hx-swap="outerHTML show:none">
     <input type="hidden" name="id" value="{{.ID}}">
+    <input type="hidden" name="undo" value="{{.Token}}">
     {{with .BackID}}<input type="hidden" name="back_id" value="{{.}}">{{end}}
     <input type="hidden" name="back_state" value="{{.BackState}}">
     <input type="hidden" name="back_scope" value="{{.BackScope}}">

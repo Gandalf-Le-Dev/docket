@@ -637,7 +637,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 			toolError(w, req.ID, "id is required and must be an integer")
 			return
 		}
-		t, err := h.Store.CloseTodo(id, stringArg(p.Arguments, "outcome"), stringArg(p.Arguments, "reason"))
+		t, _, err := h.Store.CloseTodo(id, stringArg(p.Arguments, "outcome"), stringArg(p.Arguments, "reason"))
 		if err != nil {
 			fail(err)
 			return
