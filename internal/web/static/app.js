@@ -423,20 +423,37 @@
     });
 
     function snapshot() {
-      const active = document.activeElement;
       const drawer = document.querySelector("#page .drawer .body");
       return {
         revs: new Set([...document.querySelectorAll("#page [data-rev]")].map((el) => el.dataset.rev)),
         scroll: drawer ? drawer.scrollTop : 0,
-        search: Boolean(active && active.matches("#page input[type=search]")),
+        focus: focused(),
       };
     }
 
-    // What the swap took is put back: the drawer's scroll, the search field's
-    // focus. Rows the page did not show a moment ago light up; comparing with
-    // the page just before this swap, not with the last live one, keeps a
-    // change made in this tab, which its own swap already showed, from
-    // lighting up again.
+    // Names the focused element in a way that survives the swap replacing
+    // it: its id, or for the search field and links, which have none, a
+    // selector and its place among the matches. Links share hrefs (the
+    // wordmark, the Open tab and the drawer's Close all go to /), and the
+    // click-away backdrop, which no keyboard reaches, is left out.
+    function focused() {
+      const el = document.activeElement;
+      if (!el || !el.closest("#page")) return null;
+      let selector = "";
+      if (el.id) selector = "#" + CSS.escape(el.id);
+      else if (el.matches("input[type=search]")) selector = "#page input[type=search]";
+      else if (el.hasAttribute("href"))
+        selector = `#page a[href="${CSS.escape(el.getAttribute("href"))}"]:not([tabindex="-1"], [aria-hidden="true"])`;
+      if (!selector) return null;
+      return { selector, index: [...document.querySelectorAll(selector)].indexOf(el) };
+    }
+
+    // What the swap took is put back: the drawer's scroll and the keyboard's
+    // place, which would otherwise fall back to the top of the document.
+    // Rows the page did not show a moment ago light up; comparing with the
+    // page just before this swap, not with the last live one, keeps a change
+    // made in this tab, which its own swap already showed, from lighting up
+    // again.
     function settle() {
       const was = before;
       before = null;
@@ -446,10 +463,10 @@
       }
       const drawer = document.querySelector("#page .drawer .body");
       if (drawer) drawer.scrollTop = was.scroll;
-      const q = was.search && document.querySelector("#page input[type=search]");
-      if (q) {
-        q.focus({ preventScroll: true });
-        q.setSelectionRange(q.value.length, q.value.length);
+      const el = was.focus && document.querySelectorAll(was.focus.selector)[was.focus.index];
+      if (el) {
+        el.focus({ preventScroll: true });
+        if (el.matches("input[type=search]")) el.setSelectionRange(el.value.length, el.value.length);
       }
       return true;
     }
