@@ -203,8 +203,10 @@
   // what that URL renders now. It waits while a swap would cost someone
   // something: a form being filled in, a hidden tab, a request of its own.
   function live() {
-    let waiting = false;
+    let latest = "";
+    let force = false; // the stream was refused, and only a refresh says why
     let running = false;
+    let failed = false;
     let overtaken = false;
     let debounce = 0;
     let burst = 0;
@@ -256,8 +258,50 @@
       return false;
     }
 
+    // A seq reads "<boot>.<n>"; see store.Seq.
+    function parseSeq(seq) {
+      const dot = seq ? seq.lastIndexOf(".") : -1;
+      return dot < 0 ? null : { boot: seq.slice(0, dot), n: Number(seq.slice(dot + 1)) };
+    }
+    const pageSeq = () => document.getElementById("page")?.dataset.seq || "";
+
+    // A page from another boot is behind; within one it is behind while its
+    // n is below the latest heard. A #page without a seq counts as behind,
+    // since a refresh brings one.
+    function behind() {
+      if (force) return true;
+      const known = parseSeq(latest);
+      if (!known || !document.getElementById("page")) return false;
+      const page = parseSeq(pageSeq());
+      return !page || page.boot !== known.boot || page.n < known.n;
+    }
+
+    // Within a boot a seq only moves forward: changes queued before a
+    // stream's opening seq arrive after it, carrying lower ones.
+    function hear(seq) {
+      const heard = parseSeq(seq);
+      const known = parseSeq(latest);
+      if (!heard || (known && heard.boot === known.boot && heard.n <= known.n)) return;
+      latest = seq;
+      arrive();
+    }
+
+    // A page rendered after the latest seq heard is newer news than that
+    // seq. A restarted server's pages carry its new boot before its stream
+    // reconnects to say so, and until then every page it served would look
+    // behind and refresh again as soon as it landed.
+    function adopt() {
+      const page = parseSeq(pageSeq());
+      const known = parseSeq(latest);
+      if (page && (!known || page.boot !== known.boot || page.n > known.n)) latest = pageSeq();
+    }
+
     function attempt() {
-      if (!waiting || running || debounce || document.hidden) return;
+      if (running || debounce || document.hidden) return;
+      if (!behind()) {
+        say("");
+        return;
+      }
       if (document.querySelector(".htmx-request, .htmx-swapping, .htmx-settling")) return;
       if (held()) {
         say("Updates waiting");
@@ -270,7 +314,6 @@
     // A burst, an agent filing ten items say, becomes one refresh, and a
     // steady trickle still refreshes every two seconds.
     function arrive() {
-      waiting = true;
       clearTimeout(debounce);
       burst = burst || Date.now();
       debounce = setTimeout(
@@ -283,10 +326,16 @@
       );
     }
 
+    // A refresh that fails is not tried again at once, which would spin
+    // against a server that is down; the next change or reconnect brings
+    // another.
     function refresh() {
-      waiting = false;
+      const forced = force;
+      force = false;
       running = true;
       overtaken = false;
+      failed = false;
+      let swapped = false;
       say("");
       htmx
         .ajax("GET", location.pathname + location.search, {
@@ -295,10 +344,19 @@
           swap: "outerHTML",
           headers: { [liveHeader]: "1" },
         })
-        .then(settle, () => {})
+        .then(
+          () => {
+            swapped = settle();
+          },
+          () => {
+            failed = true;
+          },
+        )
         .finally(() => {
           running = false;
-          poke();
+          if (swapped) adopt();
+          else force = force || forced;
+          if (!failed) poke();
         });
     }
 
@@ -306,14 +364,15 @@
       if (running && !isLive(e.detail.requestConfig)) overtaken = true;
     });
 
-    // A failed refresh swaps nothing and is not retried: the next change, or
-    // the stream reconnecting, brings another.
     document.addEventListener("htmx:beforeSwap", (e) => {
       const d = e.detail;
-      if (!isLive(d.requestConfig) || !d.shouldSwap) return;
+      if (!isLive(d.requestConfig)) return;
+      if (d.isError || !d.shouldSwap) {
+        failed = true;
+        return;
+      }
       if (overtaken || held()) {
         d.shouldSwap = false;
-        waiting = true;
         return;
       }
       const doc = new DOMParser().parseFromString(d.serverResponse, "text/html");
@@ -350,7 +409,7 @@
     function settle() {
       const was = before;
       before = null;
-      if (!was) return;
+      if (!was) return false;
       for (const el of document.querySelectorAll("#page [data-rev]")) {
         if (!was.revs.has(el.dataset.rev)) el.classList.add("fresh");
       }
@@ -361,23 +420,26 @@
         q.focus({ preventScroll: true });
         q.setSelectionRange(q.value.length, q.value.length);
       }
+      return true;
     }
 
     document.addEventListener("htmx:afterRequest", poke);
-    document.addEventListener("htmx:afterSettle", poke);
+    document.addEventListener("htmx:afterSettle", () => {
+      adopt();
+      poke();
+    });
     document.addEventListener("focusout", poke);
     // toggle does not bubble, and closing a popover moves no focus
     document.addEventListener("toggle", poke, true);
 
-    // The browser reconnects a dropped stream by itself, and changes made
-    // while it was down were never sent, so each reconnect refreshes once. A
-    // stream the server refused, with 204 when signed out or a proxy's error
-    // during a deploy, is closed for good, and EventSource cannot say which.
-    // A refresh with each reconnect attempt finds out: htmx takes a
-    // signed-out page to the login page whole, and a down server costs one
-    // failed request per attempt.
+    // Every stream opens with the current seq, so a page that missed changes
+    // while it had none, hidden or between its render and the stream, finds
+    // out and refreshes, and one that missed nothing does not. A stream the
+    // server refused, with 204 when signed out or a proxy's error during a
+    // deploy, is closed for good, and EventSource cannot say which; a
+    // refresh finds out, and htmx takes a signed-out page to the login page
+    // whole. A stream that opens again settles it first: the session holds.
     let source = null;
-    let opened = false;
     let backoff = 1000;
     let retry = 0;
     function connect() {
@@ -387,13 +449,14 @@
       source = s;
       s.onopen = () => {
         backoff = 1000;
-        if (opened) arrive();
-        opened = true;
+        force = false;
       };
-      s.onmessage = arrive;
+      s.addEventListener("seq", (e) => hear(e.data));
+      s.onmessage = (e) => hear(JSON.parse(e.data).seq);
       s.onerror = () => {
         if (s.readyState !== EventSource.CLOSED) return;
         source = null;
+        force = true;
         arrive();
         retry = setTimeout(connect, backoff);
         backoff = Math.min(backoff * 2, 60000);
@@ -403,7 +466,7 @@
 
     // Over HTTP/1.1 a browser opens at most six connections to a host and
     // each stream holds one, so a hidden tab lets its stream go rather than
-    // starve the tab in front. Coming back reconnects, which refreshes.
+    // starve the tab in front. Coming back reconnects.
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         clearTimeout(retry);
