@@ -14,9 +14,11 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"math/rand/v2"
 	"net/http"
@@ -62,7 +64,8 @@ func NewHandler(s *store.Store) *Handler {
 		tmpl: template.Must(template.New("").Funcs(template.FuncMap{
 			"shortTime": shortTime,
 			"ago":       ago,
-			"linkify":   linkify,
+			"body":      renderBody,
+			"excerpt":   excerpt,
 			"query":     query,
 			"dict":      dict,
 		}).ParseFS(templateFS, "templates/*.html")),
@@ -79,6 +82,8 @@ func NewHandler(s *store.Store) *Handler {
 	h.mux.HandleFunc("POST /todo/reopen", h.requireReview(h.reopen))
 	h.mux.HandleFunc("POST /todo/update", h.requireReview(h.update))
 	h.mux.HandleFunc("POST /scope/rename", h.requireReview(h.renameScope))
+	h.mux.HandleFunc("POST /image", h.requireReview(h.uploadImage))
+	h.mux.HandleFunc("GET /image/{id}", h.requireReview(h.image))
 	h.mux.HandleFunc("POST /density", h.requireReview(pref(densityCookie, "compact")))
 	h.mux.HandleFunc("POST /theme", pref(themeCookie, "light", "dark"))
 	return h
@@ -240,6 +245,29 @@ func linkify(s string) template.HTML {
 	}
 	b.WriteString(template.HTMLEscapeString(s[last:]))
 	return template.HTML(b.String())
+}
+
+// renderBody is how a body reads: linkified text, with each image marker
+// drawn as the image it points to. Any other ![..](..) stays text, so a body
+// can never make a reader's browser fetch a remote image.
+func renderBody(s string) template.HTML {
+	var b strings.Builder
+	last := 0
+	for _, m := range store.ImageMarker.FindAllStringSubmatchIndex(s, -1) {
+		b.WriteString(string(linkify(s[last:m[0]])))
+		src := "/image/" + s[m[4]:m[5]]
+		fmt.Fprintf(&b, `<a href="%s" target="_blank" rel="noopener"><img src="%s" alt="%s" loading="lazy"></a>`,
+			src, src, template.HTMLEscapeString(s[m[2]:m[3]]))
+		last = m[1]
+	}
+	b.WriteString(string(linkify(s[last:])))
+	return template.HTML(b.String())
+}
+
+// excerpt is text shown on one line, where an image cannot fit: each marker
+// becomes a word saying one is there.
+func excerpt(s string) string {
+	return store.ImageMarker.ReplaceAllString(s, "[image]")
 }
 
 func (h *Handler) render(w http.ResponseWriter, name string, data any) {
@@ -709,6 +737,77 @@ func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {
 		r.Form.Set("back_scope", store.NormalizeScope(to))
 	}
 	back(w, r, err, did("renamed", 0))
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+// uploadImage takes one image from the body editor's script and answers with
+// the marker to put in the body.
+func (h *Handler) uploadImage(w http.ResponseWriter, r *http.Request) {
+	// The session cookie is SameSite=Lax, which still lets a sibling subdomain
+	// post here; only this page's own script has any business doing so.
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		writeJSON(w, http.StatusForbidden, map[string]string{"error": "cross-site upload refused"})
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, store.MaxImageBytes+64<<10)
+	f, _, err := r.FormFile("image")
+	if err != nil {
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeJSON(w, http.StatusRequestEntityTooLarge,
+				map[string]string{"error": fmt.Sprintf("image exceeds %d MB", store.MaxImageBytes>>20)})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "no image in the upload"})
+		return
+	}
+	defer f.Close()
+	data, err := io.ReadAll(f)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "upload interrupted"})
+		return
+	}
+	id, err := h.store.AddImage(data)
+	var ve store.ValidationError
+	switch {
+	case errors.As(err, &ve):
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": ve.Error()})
+		return
+	case err != nil:
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "storage failure"})
+		return
+	}
+	src := fmt.Sprintf("/image/%d", id)
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "url": src, "markdown": "![image](" + src + ")"})
+}
+
+func (h *Handler) image(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	mime, data, err := h.store.GetImage(id)
+	if errors.Is(err, store.ErrNotFound) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	// An id is never given other bytes, so the browser can keep it for good.
+	w.Header().Set("Cache-Control", "private, max-age=31536000, immutable")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
+	w.Write(data)
 }
 
 func cookie(r *http.Request, name string) string {

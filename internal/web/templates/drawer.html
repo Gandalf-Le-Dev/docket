@@ -33,9 +33,9 @@
       {{if $t.Source}}<dt>From</dt><dd>{{$t.Source}}</dd>{{end}}
     </dl>
     {{if $t.Verdict}}
-      <p class="verdict"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{$t.Verdict}}</p>
+      <p class="verdict"><b>{{if eq $t.State "done"}}Done{{else}}Dropped{{end}}.</b> {{excerpt $t.Verdict}}</p>
     {{end}}
-    {{if $t.Text}}<div class="text">{{linkify $t.Text}}</div>{{end}}
+    {{if $t.Text}}<div class="text">{{body $t.Text}}</div>{{end}}
   </div>
 
   <footer>

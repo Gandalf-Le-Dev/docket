@@ -1,7 +1,13 @@
 package web
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
+	"image/png"
+	"mime/multipart"
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
@@ -232,6 +238,179 @@ func TestLinkify(t *testing.T) {
 		if got := string(linkify(in)); got != want {
 			t.Errorf("linkify(%q)\n got %s\nwant %s", in, got, want)
 		}
+	}
+}
+
+func TestRenderBody(t *testing.T) {
+	cases := map[string]string{
+		"shot:\n![image](/image/7)\nafter": "shot:\n" +
+			`<a href="/image/7" target="_blank" rel="noopener"><img src="/image/7" alt="image" loading="lazy"></a>` + "\nafter",
+		`![x"><script>alert(1)</script>](/image/2)`: `<a href="/image/2" target="_blank" rel="noopener">` +
+			`<img src="/image/2" alt="x&#34;&gt;&lt;script&gt;alert(1)&lt;/script&gt;" loading="lazy"></a>`,
+		// alt text that looks like a URL is not also turned into a link
+		"![https://a.example/](/image/3)":               `<a href="/image/3" target="_blank" rel="noopener"><img src="/image/3" alt="https://a.example/" loading="lazy"></a>`,
+		"see https://a.example/p.":                      `see <a href="https://a.example/p" rel="noopener">https://a.example/p</a>.`,
+		"![a](/image/abc) ![b](//evil.example/image/1)": "![a](/image/abc) ![b](//evil.example/image/1)",
+	}
+	for in, want := range cases {
+		if got := string(renderBody(in)); got != want {
+			t.Errorf("renderBody(%q)\n got %s\nwant %s", in, got, want)
+		}
+	}
+	got := string(renderBody("![x](https://evil.example/a.png)"))
+	if strings.Contains(got, "<img") || !strings.HasPrefix(got, "![x](") {
+		t.Errorf("remote image rendered: %s", got)
+	}
+	if got := excerpt("before ![shot](/image/1) after"); got != "before [image] after" {
+		t.Errorf("excerpt = %q", got)
+	}
+}
+
+func tinyPNG(t *testing.T) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{255, 0, 0, 255})
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	return buf.Bytes()
+}
+
+func upload(t *testing.T, c *http.Client, srv *httptest.Server, data []byte, header http.Header) *http.Response {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, _ := mw.CreateFormFile("image", "shot.png")
+	fw.Write(data)
+	mw.Close()
+	req, _ := http.NewRequest("POST", srv.URL+"/image", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	for k, v := range header {
+		req.Header[k] = v
+	}
+	resp, err := c.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resp
+}
+
+func TestImageUpload(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	pic := tinyPNG(t)
+
+	resp := upload(t, c, srv, pic, nil)
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/login" {
+		t.Fatalf("unauthenticated upload landed on %s", resp.Request.URL.Path)
+	}
+
+	login(t, c, srv, review)
+	resp = upload(t, c, srv, pic, http.Header{"Sec-Fetch-Site": {"same-origin"}})
+	var got struct {
+		ID       int64  `json:"id"`
+		URL      string `json:"url"`
+		Markdown string `json:"markdown"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&got); err != nil || resp.StatusCode != http.StatusOK {
+		t.Fatalf("upload: %d %v", resp.StatusCode, err)
+	}
+	resp.Body.Close()
+	if got.URL != fmt.Sprintf("/image/%d", got.ID) || got.Markdown != "![image]("+got.URL+")" {
+		t.Fatalf("upload answer: %+v", got)
+	}
+	if _, data, err := s.GetImage(got.ID); err != nil || !bytes.Equal(data, pic) {
+		t.Fatalf("stored image: %v", err)
+	}
+
+	for name, tc := range map[string]struct {
+		data   []byte
+		header http.Header
+		status int
+	}{
+		"not an image": {[]byte("<svg><script>alert(1)</script></svg>"), nil, http.StatusBadRequest},
+		"too big":      {make([]byte, 6<<20), nil, http.StatusRequestEntityTooLarge},
+		"cross-site":   {pic, http.Header{"Sec-Fetch-Site": {"same-site"}}, http.StatusForbidden},
+	} {
+		resp := upload(t, c, srv, tc.data, tc.header)
+		var e struct {
+			Error string `json:"error"`
+		}
+		json.NewDecoder(resp.Body).Decode(&e)
+		resp.Body.Close()
+		if resp.StatusCode != tc.status || e.Error == "" {
+			t.Errorf("%s: %d %q", name, resp.StatusCode, e.Error)
+		}
+	}
+}
+
+func TestImageServe(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	pic := tinyPNG(t)
+	id, err := s.AddImage(pic)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := fmt.Sprintf("/image/%d", id)
+
+	resp, err := c.Get(srv.URL + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/login" {
+		t.Fatalf("unauthenticated image landed on %s", resp.Request.URL.Path)
+	}
+
+	login(t, c, srv, review)
+	resp, err = c.Get(srv.URL + path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); body != string(pic) {
+		t.Fatalf("image bytes differ: %d vs %d", len(body), len(pic))
+	}
+	for k, want := range map[string]string{
+		"Content-Type":            "image/png",
+		"X-Content-Type-Options":  "nosniff",
+		"Cache-Control":           "private, max-age=31536000, immutable",
+		"Content-Security-Policy": "default-src 'none'",
+	} {
+		if got := resp.Header.Get(k); got != want {
+			t.Errorf("%s = %q, want %q", k, got, want)
+		}
+	}
+
+	for _, p := range []string{"/image/999", "/image/abc"} {
+		resp, err := c.Get(srv.URL + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("%s: %d", p, resp.StatusCode)
+		}
+	}
+
+	// The item page draws the image; the list row shows a word in its place.
+	tid, _, _ := s.AddTodo("with a shot", "look:\n![image]("+path+")", "", "test", "t")
+	s.CloseTodo(tid, "done", "fixed, see ![after]("+path+")")
+	resp, err = c.Get(srv.URL + fmt.Sprintf("/todo/%d", tid))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, `<img src="`+path+`" alt="image" loading="lazy">`) {
+		t.Fatalf("item page lacks the image:\n%s", body)
+	}
+	resp, err = c.Get(srv.URL + "/?state=done")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := readAll(t, resp); !strings.Contains(body, `<span class="reason">fixed, see [image]</span>`) {
+		t.Fatalf("list row shows the marker:\n%s", body)
 	}
 }
 
