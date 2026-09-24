@@ -2,6 +2,10 @@
 // images pasted into bodies, plus what each close replaced so it can be
 // undone. One file, WAL mode, four tables. The whole dataset is a few thousand
 // rows forever, so everything here is deliberately boring.
+//
+// Every write to an item goes through Store.write, which tells subscribers
+// (see Subscribe) what changed once the write commits, so no writer, the web
+// page or an agent, can change the backlog without open pages hearing of it.
 package store
 
 import (
@@ -112,7 +116,8 @@ type TokenInfo struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	feed feed
 }
 
 func Open(path string) (*Store, error) {
@@ -167,6 +172,25 @@ func validateTodoFields(title, body, scope, source string) error {
 	return nil
 }
 
+// write runs fn in a transaction and, once it commits, publishes the changes
+// fn reports. It is the only way an item is written.
+func (s *Store) write(fn func(tx *sql.Tx) ([]Change, error)) error {
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	changes, err := fn(tx)
+	if err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.feed.publish(changes)
+	return nil
+}
+
 // AddTodo files an item. If an open item already has the same normalized
 // title and scope, the existing id is returned with duplicate=true — agents
 // retry, and two agents in one repo notice the same thing. The rule is
@@ -179,27 +203,33 @@ func (s *Store) AddTodo(title, body, scope, source, via string) (id int64, dupli
 		return 0, false, err
 	}
 
-	err = s.db.QueryRow(
-		"SELECT id FROM todo WHERE state = 'open' AND scope = ? AND lower(title) = lower(?) LIMIT 1",
-		scope, title,
-	).Scan(&id)
-	if err == nil {
-		return id, true, nil
-	}
-	if !errors.Is(err, sql.ErrNoRows) {
-		return 0, false, err
-	}
-
-	ts := now()
-	res, err := s.db.Exec(
-		"INSERT INTO todo (title, body, scope, source, via, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)",
-		title, body, scope, source, via, ts, ts,
-	)
+	err = s.write(func(tx *sql.Tx) ([]Change, error) {
+		err := tx.QueryRow(
+			"SELECT id FROM todo WHERE state = 'open' AND scope = ? AND lower(title) = lower(?) LIMIT 1",
+			scope, title,
+		).Scan(&id)
+		if err == nil {
+			duplicate = true
+			return nil, nil
+		}
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+		ts := now()
+		res, err := tx.Exec(
+			"INSERT INTO todo (title, body, scope, source, via, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'open', ?, ?)",
+			title, body, scope, source, via, ts, ts,
+		)
+		if err != nil {
+			return nil, err
+		}
+		id, err = res.LastInsertId()
+		return []Change{{ID: id, Op: Added}}, err
+	})
 	if err != nil {
 		return 0, false, err
 	}
-	id, err = res.LastInsertId()
-	return id, false, err
+	return id, duplicate, nil
 }
 
 func scanTodo(row interface{ Scan(...any) error }) (Todo, error) {
@@ -294,24 +324,33 @@ type TodoUpdate struct {
 	State *string
 }
 
-func (s *Store) UpdateTodo(id int64, u TodoUpdate) (Todo, error) {
-	tx, err := s.db.Begin()
+func (s *Store) UpdateTodo(id int64, u TodoUpdate) (t Todo, err error) {
+	err = s.write(func(tx *sql.Tx) ([]Change, error) {
+		before, err := getTodo(tx, id)
+		if err != nil {
+			return nil, err
+		}
+		t, err = updateTodo(tx, before, u)
+		return []Change{{ID: id, Op: stateOp(before.State, t.State)}}, err
+	})
 	if err != nil {
 		return Todo{}, err
 	}
-	defer tx.Rollback()
-	t, err := updateTodo(tx, id, u)
-	if err != nil {
-		return Todo{}, err
-	}
-	return t, tx.Commit()
+	return t, nil
 }
 
-func updateTodo(q querier, id int64, u TodoUpdate) (Todo, error) {
-	t, err := getTodo(q, id)
-	if err != nil {
-		return Todo{}, err
+// stateOp calls an undo that reopens an item a reopen, not an edit.
+func stateOp(before, after string) Op {
+	switch {
+	case before == "open" && after != "open":
+		return Closed
+	case before != "open" && after == "open":
+		return Reopened
 	}
+	return Updated
+}
+
+func updateTodo(q querier, t Todo, u TodoUpdate) (Todo, error) {
 	if u.Title != nil {
 		t.Title = strings.TrimSpace(*u.Title)
 	}
@@ -348,7 +387,7 @@ func updateTodo(q querier, id int64, u TodoUpdate) (Todo, error) {
 	); err != nil {
 		return Todo{}, err
 	}
-	_, err = q.Exec("UPDATE undo SET spent = 1 WHERE todo_id = ?", t.ID)
+	_, err := q.Exec("UPDATE undo SET spent = 1 WHERE todo_id = ?", t.ID)
 	return t, err
 }
 
@@ -364,40 +403,39 @@ func (s *Store) CloseTodo(id int64, outcome, reason string) (t Todo, undo string
 	if outcome != "done" && outcome != "dropped" {
 		return Todo{}, "", ValidationError("outcome must be done or dropped")
 	}
-	tx, err := s.db.Begin()
-	if err != nil {
-		return Todo{}, "", err
-	}
-	defer tx.Rollback()
-	before, err := getTodo(tx, id)
-	if err != nil {
-		return Todo{}, "", err
-	}
-	body := before.Body
-	if reason = strings.TrimSpace(reason); reason != "" {
-		if body != "" {
-			body += "\n\n"
+	err = s.write(func(tx *sql.Tx) ([]Change, error) {
+		before, err := getTodo(tx, id)
+		if err != nil {
+			return nil, err
 		}
-		body += "— closed (" + outcome + "): " + reason
-	}
-	t, err = updateTodo(tx, id, TodoUpdate{Body: &body, State: &outcome})
+		body := before.Body
+		if reason = strings.TrimSpace(reason); reason != "" {
+			if body != "" {
+				body += "\n\n"
+			}
+			body += "— closed (" + outcome + "): " + reason
+		}
+		t, err = updateTodo(tx, before, TodoUpdate{Body: &body, State: &outcome})
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec("DELETE FROM undo WHERE todo_id = ? OR at < ?", id, undoCutoff()); err != nil {
+			return nil, err
+		}
+		res, err := tx.Exec("INSERT INTO undo (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
+			id, before.Body, before.State, before.UpdatedAt,
+			sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, t.UpdatedAt)
+		if err != nil {
+			return nil, err
+		}
+		n, err := res.LastInsertId()
+		undo = strconv.FormatInt(n, 10)
+		return []Change{{ID: id, Op: Closed}}, err
+	})
 	if err != nil {
 		return Todo{}, "", err
 	}
-	if _, err := tx.Exec("DELETE FROM undo WHERE todo_id = ? OR at < ?", id, undoCutoff()); err != nil {
-		return Todo{}, "", err
-	}
-	res, err := tx.Exec("INSERT INTO undo (todo_id, body, state, updated_at, closed_at, at) VALUES (?, ?, ?, ?, ?, ?)",
-		id, before.Body, before.State, before.UpdatedAt,
-		sql.NullString{String: before.ClosedAt, Valid: before.ClosedAt != ""}, t.UpdatedAt)
-	if err != nil {
-		return Todo{}, "", err
-	}
-	n, err := res.LastInsertId()
-	if err != nil {
-		return Todo{}, "", err
-	}
-	return t, strconv.FormatInt(n, 10), tx.Commit()
+	return t, undo, nil
 }
 
 func undoCutoff() string { return clock().Add(-UndoWindow).UTC().Format(time.RFC3339) }
@@ -416,49 +454,51 @@ func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 	if err != nil {
 		return Todo{}, expired
 	}
-	tx, err := s.db.Begin()
+	var t Todo
+	err = s.write(func(tx *sql.Tx) ([]Change, error) {
+		var err error
+		t, err = getTodo(tx, id)
+		if err != nil {
+			return nil, err
+		}
+		was := t.State
+		var closed sql.NullString
+		var at string
+		var spent bool
+		err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at, spent FROM undo WHERE id = ? AND todo_id = ?", n, id).
+			Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &at, &spent)
+		if errors.Is(err, sql.ErrNoRows) {
+			// A later close of the item replaced this one's row; otherwise the row
+			// was pruned, or the token never named a close of this item.
+			var later int
+			err = tx.QueryRow("SELECT COUNT(*) FROM undo WHERE todo_id = ?", id).Scan(&later)
+			if err == nil && later > 0 {
+				return nil, ValidationError(fmt.Sprintf("#%d has been closed again since, so this undo no longer applies", id))
+			}
+			if err == nil {
+				return nil, expired
+			}
+		}
+		switch {
+		case err != nil:
+			return nil, err
+		case at < undoCutoff():
+			return nil, expired
+		case spent:
+			return nil, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
+		}
+		t.ClosedAt = closed.String
+		if _, err := tx.Exec("UPDATE todo SET body = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",
+			t.Body, t.State, t.UpdatedAt, closed, id); err != nil {
+			return nil, err
+		}
+		_, err = tx.Exec("UPDATE undo SET spent = 1 WHERE id = ?", n)
+		return []Change{{ID: id, Op: stateOp(was, t.State)}}, err
+	})
 	if err != nil {
 		return Todo{}, err
 	}
-	defer tx.Rollback()
-	t, err := getTodo(tx, id)
-	if err != nil {
-		return Todo{}, err
-	}
-	var closed sql.NullString
-	var at string
-	var spent bool
-	err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at, spent FROM undo WHERE id = ? AND todo_id = ?", n, id).
-		Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &at, &spent)
-	if errors.Is(err, sql.ErrNoRows) {
-		// A later close of the item replaced this one's row; otherwise the row
-		// was pruned, or the token never named a close of this item.
-		var later int
-		err = tx.QueryRow("SELECT COUNT(*) FROM undo WHERE todo_id = ?", id).Scan(&later)
-		if err == nil && later > 0 {
-			return Todo{}, ValidationError(fmt.Sprintf("#%d has been closed again since, so this undo no longer applies", id))
-		}
-		if err == nil {
-			return Todo{}, expired
-		}
-	}
-	switch {
-	case err != nil:
-		return Todo{}, err
-	case at < undoCutoff():
-		return Todo{}, expired
-	case spent:
-		return Todo{}, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
-	}
-	t.ClosedAt = closed.String
-	if _, err := tx.Exec("UPDATE todo SET body = ?, state = ?, updated_at = ?, closed_at = ? WHERE id = ?",
-		t.Body, t.State, t.UpdatedAt, closed, id); err != nil {
-		return Todo{}, err
-	}
-	if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE id = ?", n); err != nil {
-		return Todo{}, err
-	}
-	return t, tx.Commit()
+	return t, nil
 }
 
 // Scopes lists the scopes in use with their open counts — the entire
@@ -518,23 +558,34 @@ func (s *Store) RenameScope(from, to string) (int64, error) {
 	if len(to) > MaxScopeBytes {
 		return 0, ValidationError(fmt.Sprintf("scope exceeds %d bytes", MaxScopeBytes))
 	}
-	tx, err := s.db.Begin()
+	var changes []Change
+	err := s.write(func(tx *sql.Tx) ([]Change, error) {
+		rows, err := tx.Query("SELECT id FROM todo WHERE scope = ?", from)
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var id int64
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			changes = append(changes, Change{ID: id, Op: Updated})
+		}
+		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
+			return nil, err
+		}
+		_, err = tx.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)
+		return changes, err
+	})
 	if err != nil {
 		return 0, err
 	}
-	defer tx.Rollback()
-	if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
-		return 0, err
-	}
-	res, err := tx.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)
-	if err != nil {
-		return 0, err
-	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return 0, err
-	}
-	return n, tx.Commit()
+	return int64(len(changes)), nil
 }
 
 // StateCounts feeds the web UI's tabs.
