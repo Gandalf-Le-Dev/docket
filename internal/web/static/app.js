@@ -1,5 +1,7 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
-// the text as the marker the server draws. Nothing else on the page needs this.
+// the text as the marker the server draws. Bodies arrive with htmx swaps as
+// well as with the page, so every listener sits on the document and finds its
+// field when the event comes, rather than binding to fields once at load.
 (() => {
   "use strict";
 
@@ -78,51 +80,77 @@
     }
   }
 
-  for (const ta of document.querySelectorAll("textarea[name=body]")) {
-    const attach = document.querySelector(`.attach[data-for="${ta.id}"]`);
-    if (!attach) continue;
-    const status = attach.querySelector(".upload-status");
-    const picker = attach.querySelector("input[type=file]");
-    attach.hidden = false;
-
-    attach.querySelector("button").addEventListener("click", () => picker.click());
-    picker.addEventListener("change", () => {
-      upload(ta, status, images(picker.files));
-      picker.value = "";
-    });
-
-    ta.addEventListener("paste", (e) => {
-      const files = images(e.clipboardData && e.clipboardData.files);
-      if (!files.length) return;
-      e.preventDefault();
-      upload(ta, status, files);
-    });
-
-    const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
-    ta.addEventListener("dragover", (e) => {
-      if (!dragsFiles(e)) return;
-      e.preventDefault();
-      ta.classList.add("drop-target");
-    });
-    ta.addEventListener("dragleave", () => ta.classList.remove("drop-target"));
-    ta.addEventListener("drop", (e) => {
-      ta.classList.remove("drop-target");
-      if (!dragsFiles(e)) return;
-      // left alone, the browser opens a dropped file in place of the page and the draft is lost
-      e.preventDefault();
-      const files = images(e.dataTransfer.files);
-      if (!files.length) {
-        status.textContent = "only images can be attached";
-        return;
-      }
-      ta.focus();
-      upload(ta, status, files);
-    });
-
-    if (ta.form) {
-      ta.form.addEventListener("submit", (e) => {
-        if ((ta.form.dataset.uploads || "0") !== "0") e.preventDefault();
-      });
-    }
+  // bodyOf is the body field an event landed on, with its attach row, or null.
+  function bodyOf(target) {
+    const ta = target instanceof Element ? target.closest("textarea[name=body]") : null;
+    const attach = ta && ta.id ? document.querySelector(`.attach[data-for="${ta.id}"]`) : null;
+    return attach ? { ta, attach, status: attach.querySelector(".upload-status") } : null;
   }
+
+  function reveal(root) {
+    for (const attach of root.querySelectorAll(".attach[hidden]")) attach.hidden = false;
+  }
+  reveal(document);
+  document.addEventListener("htmx:load", (e) => reveal(e.target));
+
+  document.addEventListener("click", (e) => {
+    const button = e.target instanceof Element && e.target.closest(".attach button");
+    if (button) button.parentElement.querySelector("input[type=file]").click();
+  });
+
+  document.addEventListener("change", (e) => {
+    const picker = e.target;
+    const attach = picker instanceof HTMLInputElement && picker.type === "file" && picker.closest(".attach");
+    if (!attach) return;
+    const ta = document.getElementById(attach.dataset.for);
+    if (ta) upload(ta, attach.querySelector(".upload-status"), images(picker.files));
+    picker.value = "";
+  });
+
+  document.addEventListener("paste", (e) => {
+    const field = bodyOf(e.target);
+    const files = images(e.clipboardData && e.clipboardData.files);
+    if (!field || !files.length) return;
+    e.preventDefault();
+    upload(field.ta, field.status, files);
+  });
+
+  const dragsFiles = (e) => e.dataTransfer && [...e.dataTransfer.types].includes("Files");
+  document.addEventListener("dragover", (e) => {
+    const field = bodyOf(e.target);
+    if (!field || !dragsFiles(e)) return;
+    e.preventDefault();
+    field.ta.classList.add("drop-target");
+  });
+  document.addEventListener("dragleave", (e) => {
+    const field = bodyOf(e.target);
+    if (field) field.ta.classList.remove("drop-target");
+  });
+  document.addEventListener("drop", (e) => {
+    const field = bodyOf(e.target);
+    if (!field) return;
+    field.ta.classList.remove("drop-target");
+    if (!dragsFiles(e)) return;
+    // left alone, the browser opens a dropped file in place of the page and the draft is lost
+    e.preventDefault();
+    const files = images(e.dataTransfer.files);
+    if (!files.length) {
+      field.status.textContent = "only images can be attached";
+      return;
+    }
+    field.ta.focus();
+    upload(field.ta, field.status, files);
+  });
+
+  // Capture, and stop there: htmx submits a boosted form from its own
+  // listener on the form, which never checks whether the event was cancelled.
+  document.addEventListener(
+    "submit",
+    (e) => {
+      if ((e.target.dataset.uploads || "0") === "0") return;
+      e.preventDefault();
+      e.stopPropagation();
+    },
+    true,
+  );
 })();
