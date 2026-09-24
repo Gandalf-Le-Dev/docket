@@ -675,6 +675,12 @@ func TestUndoFromToast(t *testing.T) {
 	if _, body = post("/todo/undo", first); !strings.Contains(body, "closed again since") {
 		t.Fatalf("stale undo not refused:\n%s", body)
 	}
+	// The refusal empties the toast region, rather than leave an Undo that can
+	// only fail again.
+	if toast := body[strings.Index(body, `<div id="toasts"`):]; !strings.HasPrefix(toast,
+		`<div id="toasts" class="toasts" role="status"><div hx-swap-oob="innerHTML:#toasts"></div></div>`) {
+		t.Fatalf("refused undo leaves its toast:\n%s", toast)
+	}
 	if got, _ := s.GetTodo(id); got != agent {
 		t.Fatalf("stale undo changed the entry: %+v", got)
 	}

@@ -92,7 +92,9 @@
 
 {{/* The live region sits outside #page, so no swap replaces it and a screen
      reader hears each toast put into it. A response carries its toast out of
-     band; one without a toast leaves the last one to run out its time. */}}
+     band; one without a toast leaves the last one to run out its time, unless
+     it reports a failure, which empties the region: an Undo left there could
+     only fail again. */}}
 {{define "toasts"}}<div id="toasts" class="toasts" role="status">
 {{- with .Flash}}<div hx-swap-oob="innerHTML:#toasts"><div class="toast">
   <span>{{.Text}}</span>
@@ -107,7 +109,8 @@
     <button type="submit" class="btn--quiet">Undo</button>
   </form>
   {{- end}}
-</div></div>{{end -}}
+</div></div>
+{{- else}}{{if .Error}}<div hx-swap-oob="innerHTML:#toasts"></div>{{end}}{{end -}}
 </div>{{end}}
 
 {{/* where a form posted from the list sends you back to */}}
