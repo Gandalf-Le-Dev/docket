@@ -580,11 +580,11 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 		toolResult(w, req.ID, map[string]any{"id": id, "duplicate": dup, "url": link.Item(base, id)})
 
 	case "todo_list":
-		todos, err := h.Store.ListTodos(
-			stringArg(p.Arguments, "state"),
-			stringArg(p.Arguments, "scope"),
-			stringArg(p.Arguments, "q"),
-		)
+		todos, err := h.Store.ListTodos(store.Filter{
+			State: stringArg(p.Arguments, "state"),
+			Scope: stringArg(p.Arguments, "scope"),
+			Query: stringArg(p.Arguments, "q"),
+		})
 		if err != nil {
 			fail(err)
 			return

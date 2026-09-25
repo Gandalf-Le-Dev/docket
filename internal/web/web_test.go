@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"slices"
 	"strconv"
@@ -374,7 +375,7 @@ func TestLoginAddCloseFlow(t *testing.T) {
 		t.Fatalf("index missing new item:\n%s", body)
 	}
 
-	todos, err := s.ListTodos("open", "", "")
+	todos, err := s.ListTodos(store.Filter{State: "open"})
 	if err != nil || len(todos) != 1 {
 		t.Fatalf("store after add: %v %v", todos, err)
 	}
@@ -658,7 +659,7 @@ func TestCrossOriginPostsRefused(t *testing.T) {
 	if got, _ := s.GetTodo(id); got.State != "open" || got.Title != "keep me open" {
 		t.Fatalf("cross-origin close or update went through: %+v", got)
 	}
-	if todos, _ := s.ListTodos("all", "", ""); len(todos) != 1 {
+	if todos, _ := s.ListTodos(store.Filter{State: "all"}); len(todos) != 1 {
 		t.Fatalf("cross-origin add went through: %+v", todos)
 	}
 	for _, header := range []http.Header{{"Sec-Fetch-Site": {"same-origin"}}, {}} {
@@ -888,7 +889,7 @@ func TestUndoFromToast(t *testing.T) {
 		!strings.Contains(body, "Restored #1.") || !strings.Contains(body, `class="entry on"`) {
 		t.Fatalf("undo landed on %s:\n%s", resp.Request.URL, body)
 	}
-	if got, _ := s.GetTodo(id); got != before {
+	if got, _ := s.GetTodo(id); !reflect.DeepEqual(got, before) {
 		t.Fatalf("undo is not exact:\n got  %+v\n want %+v", got, before)
 	}
 
@@ -909,7 +910,7 @@ func TestUndoFromToast(t *testing.T) {
 		`<div id="toasts" class="toasts" role="status"><div hx-swap-oob="innerHTML:#toasts"></div></div>`) {
 		t.Fatalf("refused undo leaves its toast:\n%s", toast)
 	}
-	if got, _ := s.GetTodo(id); got != agent {
+	if got, _ := s.GetTodo(id); !reflect.DeepEqual(got, agent) {
 		t.Fatalf("stale undo changed the entry: %+v", got)
 	}
 
@@ -1001,7 +1002,7 @@ func TestUpdateOnlyWhatIsPosted(t *testing.T) {
 
 	// The title is checked as in the full form, and a refusal changes nothing.
 	_, body = post(url.Values{"id": {"1"}, "title": {" "}, "back_open": {"1"}})
-	if after, _ := s.GetTodo(id); after != got || !strings.Contains(body, "title must not be empty") {
+	if after, _ := s.GetTodo(id); !reflect.DeepEqual(after, got) || !strings.Contains(body, "title must not be empty") {
 		t.Fatalf("empty title: %+v\n%s", after, body)
 	}
 
@@ -1094,7 +1095,7 @@ func TestUpdateRefusedWhenStale(t *testing.T) {
 			t.Fatalf("%s refusal: at %s, HX-Push-Url %q", back, resp.Request.URL, resp.Header.Get("HX-Push-Url"))
 		}
 	}
-	if got, _ := s.GetTodo(id); got != now {
+	if got, _ := s.GetTodo(id); !reflect.DeepEqual(got, now) {
 		t.Fatalf("stale save wrote: %+v", got)
 	}
 

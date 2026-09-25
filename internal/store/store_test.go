@@ -2,12 +2,14 @@ package store
 
 import (
 	"bytes"
+	"database/sql"
 	"errors"
 	"fmt"
 	"image"
 	"image/color"
 	"image/png"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -116,7 +118,7 @@ func TestValidation(t *testing.T) {
 	if _, _, err := s.AddTodo("ok", strings.Repeat("b", MaxBodyBytes+1), "", "", "x"); !errors.As(err, &ve) {
 		t.Fatalf("long body: %v", err)
 	}
-	if _, err := s.ListTodos("bogus", "", ""); !errors.As(err, &ve) {
+	if _, err := s.ListTodos(Filter{State: "bogus"}); !errors.As(err, &ve) {
 		t.Fatalf("bad state: %v", err)
 	}
 	if _, err := s.GetTodo(999); !errors.Is(err, ErrNotFound) {
@@ -178,7 +180,7 @@ func TestUndoClose(t *testing.T) {
 			t.Fatal(err)
 		}
 		stored, _ := s.GetTodo(id)
-		if got != want || stored != want {
+		if !reflect.DeepEqual(got, want) || !reflect.DeepEqual(stored, want) {
 			t.Fatalf("undo\n got    %+v\n stored %+v\n want   %+v", got, stored, want)
 		}
 	}
@@ -272,24 +274,24 @@ func TestListFilters(t *testing.T) {
 	s.AddTodo("gamma", "", "one", "", "x")
 	s.CloseTodo(a, "done", "")
 
-	open, _ := s.ListTodos("open", "", "")
+	open, _ := s.ListTodos(Filter{State: "open"})
 	if len(open) != 2 {
 		t.Fatalf("open: %d", len(open))
 	}
-	all, _ := s.ListTodos("all", "", "")
+	all, _ := s.ListTodos(Filter{State: "all"})
 	if len(all) != 3 {
 		t.Fatalf("all: %d", len(all))
 	}
-	scoped, _ := s.ListTodos("all", "ONE", "")
+	scoped, _ := s.ListTodos(Filter{State: "all", Scope: "ONE"})
 	if len(scoped) != 2 {
 		t.Fatalf("scope filter should normalize: %d", len(scoped))
 	}
-	found, _ := s.ListTodos("all", "", "needle")
+	found, _ := s.ListTodos(Filter{State: "all", Query: "needle"})
 	if len(found) != 2 {
 		t.Fatalf("query over title+body: %d", len(found))
 	}
 	// LIKE metacharacters in the query must not act as wildcards.
-	none, _ := s.ListTodos("all", "", "%")
+	none, _ := s.ListTodos(Filter{State: "all", Query: "%"})
 	if len(none) != 0 {
 		t.Fatalf("unescaped LIKE: %d", len(none))
 	}
@@ -615,5 +617,231 @@ func TestImageRefs(t *testing.T) {
 	got := ImageRefs(body)
 	if len(got) != 2 || got[0] != 3 || got[1] != 1 {
 		t.Fatalf("ImageRefs = %v", got)
+	}
+}
+
+// Flairs are normalized like scopes and kept as a sorted set; empty ones
+// vanish, and the limits are the caller's mistake, not a server fault.
+func TestFlairsNormalizeAndLimit(t *testing.T) {
+	s := testStore(t)
+	id, _, err := s.AddTodo("item", "", "", "", "x", " Bug ", "art", "", "BUG", "gameplay")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := s.GetTodo(id)
+	if !reflect.DeepEqual(got.Flairs, []string{"art", "bug", "gameplay"}) {
+		t.Fatalf("flairs: %q", got.Flairs)
+	}
+	// whitespace inside a flair, line breaks and tabs too, reads as one space
+	spaced, _, err := s.AddTodo("spaced", "", "", "", "x", "Save\n  System", "save\tsystem", "level  design")
+	if got, _ := s.GetTodo(spaced); err != nil || !reflect.DeepEqual(got.Flairs, []string{"level design", "save system"}) {
+		t.Fatalf("whitespace in flairs: %q %v", got.Flairs, err)
+	}
+	if todos, _ := s.ListTodos(Filter{Flair: "SAVE   system"}); len(todos) != 1 {
+		t.Fatalf("filter by a flair spelled with other whitespace: %d", len(todos))
+	}
+	bare, _, _ := s.AddTodo("bare", "", "", "", "x")
+	if got, _ := s.GetTodo(bare); got.Flairs == nil || len(got.Flairs) != 0 {
+		t.Fatalf("no flairs should read as an empty set: %#v", got.Flairs)
+	}
+
+	var ve ValidationError
+	eleven := make([]string, MaxFlairs+1)
+	for i := range eleven {
+		eleven[i] = fmt.Sprintf("f%d", i)
+	}
+	for name, flairs := range map[string][]string{
+		"too many":        eleven,
+		"too long":        {strings.Repeat("x", MaxFlairBytes+1)},
+		"comma":           {"a,b"},
+		"control":         {"a\x00b"},
+		"zero-width":      {"a\u200bb"},
+		"direction mark":  {"a\u200eb"},
+		"byte order mark": {"\ufeffa"},
+	} {
+		if _, _, err := s.AddTodo("new "+name, "", "", "", "x", flairs...); !errors.As(err, &ve) {
+			t.Fatalf("add %s: %v", name, err)
+		}
+		if _, err := s.UpdateTodo(id, TodoUpdate{Flairs: &flairs}); !errors.As(err, &ve) {
+			t.Fatalf("update %s: %v", name, err)
+		}
+	}
+	// the count is of distinct flairs, and the byte limit is inclusive
+	ten := append(eleven[:MaxFlairs-1:MaxFlairs-1], "F0", strings.Repeat("y", MaxFlairBytes))
+	if _, err := s.UpdateTodo(id, TodoUpdate{Flairs: &ten}); err != nil {
+		t.Fatalf("ten distinct flairs: %v", err)
+	}
+	if got, _ := s.GetTodo(id); len(got.Flairs) != MaxFlairs {
+		t.Fatalf("ten flairs stored as %q", got.Flairs)
+	}
+}
+
+// An update replaces the set only when it names one, in the write that
+// changes the rest, and a flair change is a change to the item's Rev but not
+// to its title's.
+func TestUpdateFlairs(t *testing.T) {
+	s := testStore(t)
+	id, _, _ := s.AddTodo("item", "body", "game", "", "x", "art")
+	changes, stop := s.Subscribe()
+	defer stop()
+
+	title := "renamed"
+	got, err := s.UpdateTodo(id, TodoUpdate{Title: &title})
+	if err != nil || !reflect.DeepEqual(got.Flairs, []string{"art"}) {
+		t.Fatalf("title update touched flairs: %+v %v", got, err)
+	}
+	next(t, changes)
+
+	flairs := []string{"Bug", "art"}
+	body := "new body"
+	got, err = s.UpdateTodo(id, TodoUpdate{Body: &body, Flairs: &flairs, IfRev: got.Rev()})
+	if err != nil || !reflect.DeepEqual(got.Flairs, []string{"art", "bug"}) || got.Body != body {
+		t.Fatalf("update: %+v %v", got, err)
+	}
+	if c := next(t, changes); c.ID != id || c.Op != Updated {
+		t.Fatalf("change: %+v", c)
+	}
+	quiet(t, changes)
+	if stored, _ := s.GetTodo(id); !reflect.DeepEqual(stored, got) {
+		t.Fatalf("stored %+v, returned %+v", stored, got)
+	}
+
+	// Within the same second, only the flairs tell the two versions apart.
+	cur, _ := s.GetTodo(id)
+	moved := cur
+	moved.Flairs = []string{"art"}
+	if moved.Rev() == cur.Rev() || moved.TitleRev() != cur.TitleRev() {
+		t.Fatal("Rev must cover flairs and TitleRev must not")
+	}
+	agent := []string{"infra"}
+	if _, err := s.UpdateTodo(id, TodoUpdate{Flairs: &agent}); err != nil {
+		t.Fatal(err)
+	}
+	mine := "mine"
+	if _, err := s.UpdateTodo(id, TodoUpdate{Body: &mine, IfRev: cur.Rev()}); !errors.As(err, &ChangedError{}) {
+		t.Fatalf("save over an agent's flair change: %v", err)
+	}
+	if _, err := s.UpdateTodo(id, TodoUpdate{Title: &mine, IfTitleRev: cur.TitleRev()}); err != nil {
+		t.Fatalf("title save over a flair change: %v", err)
+	}
+
+	none := []string{}
+	if got, _ := s.UpdateTodo(id, TodoUpdate{Flairs: &none}); len(got.Flairs) != 0 {
+		t.Fatalf("clearing flairs: %q", got.Flairs)
+	}
+}
+
+// Closing, undoing, reopening and renaming a scope carry an item's flairs
+// along untouched.
+func TestFlairsSurviveCloseUndoAndRename(t *testing.T) {
+	s := testStore(t)
+	id, _, _ := s.AddTodo("item", "", "hop-box", "", "x", "bug", "infra")
+	want := []string{"bug", "infra"}
+	check := func(step string) {
+		t.Helper()
+		if got, _ := s.GetTodo(id); !reflect.DeepEqual(got.Flairs, want) {
+			t.Fatalf("%s: flairs %q", step, got.Flairs)
+		}
+	}
+	closed, undo, err := s.CloseTodo(id, "dropped", "no")
+	if err != nil || !reflect.DeepEqual(closed.Flairs, want) {
+		t.Fatalf("close: %+v %v", closed, err)
+	}
+	check("close")
+	if got, err := s.UndoClose(id, undo); err != nil || !reflect.DeepEqual(got.Flairs, want) {
+		t.Fatalf("undo: %+v %v", got, err)
+	}
+	check("undo")
+	if _, err := s.RenameScope("hop-box", "hopbox"); err != nil {
+		t.Fatal(err)
+	}
+	check("rename")
+}
+
+func TestListByFlair(t *testing.T) {
+	s := testStore(t)
+	a, _, _ := s.AddTodo("sprite sheet", "", "game", "", "x", "art")
+	b, _, _ := s.AddTodo("crash on load", "", "game", "", "x", "bug", "gameplay")
+	c, _, _ := s.AddTodo("deploy", "", "ops", "", "x", "bug", "infra")
+	s.AddTodo("plain", "", "ops", "", "x")
+	s.CloseTodo(c, "done", "")
+
+	ids := func(f Filter) []int64 {
+		t.Helper()
+		todos, err := s.ListTodos(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var out []int64
+		for _, t := range todos {
+			out = append(out, t.ID)
+		}
+		return out
+	}
+	for name, c := range map[string]struct {
+		f    Filter
+		want []int64
+	}{
+		"flair":             {Filter{Flair: "BUG "}, []int64{b}},
+		"flair in all":      {Filter{State: "all", Flair: "bug"}, []int64{c, b}},
+		"flair and scope":   {Filter{State: "all", Flair: "bug", Scope: "ops"}, []int64{c}},
+		"query on a flair":  {Filter{Query: "gamepl"}, []int64{b}},
+		"query and flair":   {Filter{State: "all", Query: "sprite", Flair: "art"}, []int64{a}},
+		"flair nobody uses": {Filter{Flair: "audio"}, nil},
+	} {
+		if got := ids(c.f); !reflect.DeepEqual(got, c.want) {
+			t.Fatalf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+	todos, _ := s.ListTodos(Filter{})
+	for _, t2 := range todos {
+		if t2.ID == b && !reflect.DeepEqual(t2.Flairs, []string{"bug", "gameplay"}) {
+			t.Fatalf("list lost flairs: %+v", t2)
+		}
+	}
+}
+
+func TestFlairCounts(t *testing.T) {
+	s := testStore(t)
+	s.AddTodo("a", "", "", "", "x", "bug")
+	s.AddTodo("b", "", "", "", "x", "bug", "art")
+	c, _, _ := s.AddTodo("c", "", "", "", "x", "docs")
+	s.CloseTodo(c, "done", "")
+
+	got, err := s.Flairs()
+	want := []FlairCount{{"bug", 2}, {"art", 1}, {"docs", 0}}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("flairs: %+v %v, want %+v", got, err, want)
+	}
+}
+
+// A database from before flairs gains their table when it is opened, and its
+// items read with none.
+func TestOpenAddsFlairsToAnOldDatabase(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.db")
+	db, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`CREATE TABLE todo (id INTEGER PRIMARY KEY, title TEXT NOT NULL, body TEXT NOT NULL DEFAULT '',
+		scope TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', via TEXT NOT NULL,
+		state TEXT NOT NULL DEFAULT 'open', created_at TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT);
+		INSERT INTO todo (title, via, created_at, updated_at) VALUES ('old', 'x', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
+	db.Close()
+
+	s, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := s.GetTodo(1)
+	if err != nil || got.Title != "old" || len(got.Flairs) != 0 {
+		t.Fatalf("old item: %+v %v", got, err)
+	}
+	flairs := []string{"bug"}
+	if got, err := s.UpdateTodo(1, TodoUpdate{Flairs: &flairs}); err != nil || !reflect.DeepEqual(got.Flairs, flairs) {
+		t.Fatalf("flairs on an old item: %+v %v", got, err)
 	}
 }

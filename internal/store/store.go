@@ -1,7 +1,7 @@
-// Package store owns Docket's SQLite database: the todos, the tokens and the
-// images pasted into bodies, plus what each close replaced so it can be
-// undone. One file, WAL mode, four tables. The whole dataset is a few thousand
-// rows forever, so everything here is deliberately boring.
+// Package store owns Docket's SQLite database: the todos and their flairs,
+// the tokens and the images pasted into bodies, plus what each close replaced
+// so it can be undone. One file, WAL mode, five tables. The whole dataset is
+// a few thousand rows forever, so everything here is deliberately boring.
 //
 // Every write to an item goes through Store.write, which tells subscribers
 // (see Subscribe) what changed once the write commits, so no writer, the web
@@ -17,9 +17,11 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	_ "modernc.org/sqlite"
 )
@@ -38,6 +40,14 @@ CREATE TABLE IF NOT EXISTS todo (
   closed_at  TEXT
 );
 CREATE INDEX IF NOT EXISTS todo_state_scope ON todo (state, scope);
+
+-- The kinds of work an item is (bug, art, gameplay), several per item.
+CREATE TABLE IF NOT EXISTS todo_flair (
+  todo_id INTEGER NOT NULL REFERENCES todo (id),
+  flair   TEXT NOT NULL,
+  PRIMARY KEY (todo_id, flair)
+);
+CREATE INDEX IF NOT EXISTS todo_flair_flair ON todo_flair (flair);
 
 CREATE TABLE IF NOT EXISTS token (
   name       TEXT PRIMARY KEY,
@@ -88,6 +98,8 @@ const (
 	MaxScopeBytes  = 100
 	MaxSourceBytes = 500
 	MaxImageBytes  = 5 << 20
+	MaxFlairs      = 10
+	MaxFlairBytes  = 40
 )
 
 var ErrNotFound = errors.New("not found")
@@ -108,11 +120,17 @@ type Todo struct {
 	State     string
 	CreatedAt string
 	UpdatedAt string
-	ClosedAt  string // empty while open
+	ClosedAt  string   // empty while open
+	Flairs    []string // normalized, sorted, each once
 }
 
 type ScopeCount struct {
 	Scope string
+	Open  int
+}
+
+type FlairCount struct {
+	Flair string
 	Open  int
 }
 
@@ -163,6 +181,56 @@ func NormalizeScope(scope string) string {
 	return strings.ToLower(strings.TrimSpace(scope))
 }
 
+// NormalizeFlair is one flair as it is stored: lowercase, trimmed, and each
+// run of whitespace inside it one space, since a line break could never be
+// typed back into the one-line field that edits it.
+func NormalizeFlair(flair string) string {
+	return strings.Join(strings.Fields(strings.ToLower(flair)), " ")
+}
+
+// NormalizeFlairs is a flair set as it is stored: each flair normalized, empty
+// ones dropped, each once, sorted.
+func NormalizeFlairs(flairs []string) ([]string, error) {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, f := range flairs {
+		f = NormalizeFlair(f)
+		if f == "" || seen[f] {
+			continue
+		}
+		// a flair list travels as comma-separated text in the web form
+		if strings.Contains(f, ",") {
+			return nil, ValidationError(fmt.Sprintf("flair %q must not contain a comma", f))
+		}
+		// an invisible character would make two flairs that read alike differ
+		if strings.IndexFunc(f, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
+			return nil, ValidationError(fmt.Sprintf("flair %q must not contain control or invisible characters", f))
+		}
+		if len(f) > MaxFlairBytes {
+			return nil, ValidationError(fmt.Sprintf("flair %q exceeds %d bytes", f, MaxFlairBytes))
+		}
+		seen[f] = true
+		out = append(out, f)
+	}
+	if len(out) > MaxFlairs {
+		return nil, ValidationError(fmt.Sprintf("at most %d flairs per item", MaxFlairs))
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
+func setFlairs(q querier, id int64, flairs []string) error {
+	if _, err := q.Exec("DELETE FROM todo_flair WHERE todo_id = ?", id); err != nil {
+		return err
+	}
+	for _, f := range flairs {
+		if _, err := q.Exec("INSERT INTO todo_flair (todo_id, flair) VALUES (?, ?)", id, f); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func validateTodoFields(title, body, scope, source string) error {
 	if strings.TrimSpace(title) == "" {
 		return ValidationError("title must not be empty")
@@ -204,12 +272,17 @@ func (s *Store) write(fn func(tx *sql.Tx) ([]Change, error)) error {
 // AddTodo files an item. If an open item already has the same normalized
 // title and scope, the existing id is returned with duplicate=true — agents
 // retry, and two agents in one repo notice the same thing. The rule is
-// deliberately dumb so it can never eat a genuinely new item.
-func (s *Store) AddTodo(title, body, scope, source, via string) (id int64, duplicate bool, err error) {
+// deliberately dumb so it can never eat a genuinely new item, and a duplicate
+// keeps the flairs it has.
+func (s *Store) AddTodo(title, body, scope, source, via string, flairs ...string) (id int64, duplicate bool, err error) {
 	title = strings.TrimSpace(title)
 	scope = NormalizeScope(scope)
 	source = strings.TrimSpace(source)
 	if err := validateTodoFields(title, body, scope, source); err != nil {
+		return 0, false, err
+	}
+	flairs, err = NormalizeFlairs(flairs)
+	if err != nil {
 		return 0, false, err
 	}
 
@@ -233,8 +306,10 @@ func (s *Store) AddTodo(title, body, scope, source, via string) (id int64, dupli
 		if err != nil {
 			return nil, err
 		}
-		id, err = res.LastInsertId()
-		return []Change{{ID: id, Op: Added}}, err
+		if id, err = res.LastInsertId(); err != nil {
+			return nil, err
+		}
+		return []Change{{ID: id, Op: Added}}, setFlairs(tx, id, flairs)
 	})
 	if err != nil {
 		return 0, false, err
@@ -244,16 +319,24 @@ func (s *Store) AddTodo(title, body, scope, source, via string) (id int64, dupli
 
 func scanTodo(row interface{ Scan(...any) error }) (Todo, error) {
 	var t Todo
-	var closed sql.NullString
-	err := row.Scan(&t.ID, &t.Title, &t.Body, &t.Scope, &t.Source, &t.Via, &t.State, &t.CreatedAt, &t.UpdatedAt, &closed)
+	var closed, flairs sql.NullString
+	err := row.Scan(&t.ID, &t.Title, &t.Body, &t.Scope, &t.Source, &t.Via, &t.State, &t.CreatedAt, &t.UpdatedAt, &closed, &flairs)
 	if err != nil {
 		return Todo{}, err
 	}
 	t.ClosedAt = closed.String
+	t.Flairs = []string{}
+	if flairs.String != "" {
+		t.Flairs = strings.Split(flairs.String, ",")
+		sort.Strings(t.Flairs)
+	}
 	return t, nil
 }
 
-const todoCols = "id, title, body, scope, source, via, state, created_at, updated_at, closed_at"
+// todoCols reads an item's flairs in the same statement, joined by the comma
+// no flair may hold, so a list costs one query however long it is.
+const todoCols = "id, title, body, scope, source, via, state, created_at, updated_at, closed_at, " +
+	"(SELECT group_concat(flair, ',') FROM todo_flair WHERE todo_id = todo.id)"
 
 // querier is what the database and a transaction share, so one write can be
 // part of a larger one.
@@ -277,10 +360,18 @@ func escapeLike(s string) string {
 	return r.Replace(s)
 }
 
-// ListTodos returns items filtered by state ("open", "done", "dropped", or
-// "all"), optional scope, and optional substring query over title and body.
-// Newest first. No pagination — at this scale there is nothing to paginate.
-func (s *Store) ListTodos(state, scope, query string) ([]Todo, error) {
+// Filter narrows ListTodos. Every field is optional; State defaults to open.
+type Filter struct {
+	State string // "open", "done", "dropped", or "all"
+	Scope string
+	Flair string // items carrying this flair
+	Query string // substring of the title, the body or a flair
+}
+
+// ListTodos returns the items f lets through, newest first. No pagination —
+// at this scale there is nothing to paginate.
+func (s *Store) ListTodos(f Filter) ([]Todo, error) {
+	state := f.State
 	if state == "" {
 		state = "open"
 	}
@@ -296,14 +387,19 @@ func (s *Store) ListTodos(state, scope, query string) ([]Todo, error) {
 		where = append(where, "state = ?")
 		args = append(args, state)
 	}
-	if scope != "" {
+	if f.Scope != "" {
 		where = append(where, "scope = ?")
-		args = append(args, NormalizeScope(scope))
+		args = append(args, NormalizeScope(f.Scope))
 	}
-	if query != "" {
-		like := "%" + escapeLike(query) + "%"
-		where = append(where, `(title LIKE ? ESCAPE '\' OR body LIKE ? ESCAPE '\')`)
-		args = append(args, like, like)
+	if f.Flair != "" {
+		where = append(where, "EXISTS (SELECT 1 FROM todo_flair WHERE todo_id = todo.id AND flair = ?)")
+		args = append(args, NormalizeFlair(f.Flair))
+	}
+	if f.Query != "" {
+		like := "%" + escapeLike(f.Query) + "%"
+		where = append(where, `(title LIKE ? ESCAPE '\' OR body LIKE ? ESCAPE '\'
+			OR EXISTS (SELECT 1 FROM todo_flair WHERE todo_id = todo.id AND flair LIKE ? ESCAPE '\'))`)
+		args = append(args, like, like, like)
 	}
 
 	rows, err := s.db.Query(
@@ -330,7 +426,7 @@ func (s *Store) ListTodos(state, scope, query string) ([]Todo, error) {
 // changes it, even two within the second updated_at counts in.
 func (t Todo) Rev() string {
 	sum := sha256.New()
-	for _, f := range []string{t.Title, t.Body, t.Scope, t.State, t.UpdatedAt, t.ClosedAt} {
+	for _, f := range []string{t.Title, t.Body, t.Scope, t.State, t.UpdatedAt, t.ClosedAt, strings.Join(t.Flairs, ",")} {
 		sum.Write([]byte(f))
 		sum.Write([]byte{0})
 	}
@@ -344,15 +440,16 @@ func (t Todo) TitleRev() string {
 	return hex.EncodeToString(sum[:8])
 }
 
-// TodoUpdate carries the fields to change; nil means leave alone. A non-empty
-// IfRev makes the update apply only to the item at that Rev, and IfTitleRev
-// only to the item with that TitleRev, so a form opened before someone else's
-// change cannot overwrite it unseen.
+// TodoUpdate carries the fields to change; nil means leave alone, and Flairs
+// replaces the whole set. A non-empty IfRev makes the update apply only to
+// the item at that Rev, and IfTitleRev only to the item with that TitleRev, so
+// a form opened before someone else's change cannot overwrite it unseen.
 type TodoUpdate struct {
 	Title      *string
 	Body       *string
 	Scope      *string
 	State      *string
+	Flairs     *[]string
 	IfRev      string
 	IfTitleRev string
 }
@@ -406,6 +503,16 @@ func updateTodo(q querier, t Todo, u TodoUpdate) (Todo, error) {
 	}
 	if err := validateTodoFields(t.Title, t.Body, t.Scope, t.Source); err != nil {
 		return Todo{}, err
+	}
+	if u.Flairs != nil {
+		flairs, err := NormalizeFlairs(*u.Flairs)
+		if err != nil {
+			return Todo{}, err
+		}
+		if err := setFlairs(q, t.ID, flairs); err != nil {
+			return Todo{}, err
+		}
+		t.Flairs = flairs
 	}
 
 	closed := sql.NullString{String: t.ClosedAt, Valid: t.ClosedAt != ""}
@@ -563,6 +670,28 @@ func (s *Store) Scopes() ([]ScopeCount, error) {
 			return nil, err
 		}
 		out = append(out, sc)
+	}
+	return out, rows.Err()
+}
+
+// Flairs lists every flair in use, each with how many open items carry it,
+// most used first: the suggestions for a new item and the todo_flairs verb. A
+// flair whose items are all closed is still listed, with 0, so it is reused
+// rather than typed again slightly differently.
+func (s *Store) Flairs() ([]FlairCount, error) {
+	rows, err := s.db.Query(`SELECT f.flair, SUM(t.state = 'open') FROM todo_flair f JOIN todo t ON t.id = f.todo_id
+		GROUP BY f.flair ORDER BY SUM(t.state = 'open') DESC, f.flair`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []FlairCount
+	for rows.Next() {
+		var fc FlairCount
+		if err := rows.Scan(&fc.Flair, &fc.Open); err != nil {
+			return nil, err
+		}
+		out = append(out, fc)
 	}
 	return out, rows.Err()
 }

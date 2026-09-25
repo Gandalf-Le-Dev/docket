@@ -652,7 +652,7 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editVi
 	scope := store.NormalizeScope(q.Get("scope"))
 	search := q.Get("q")
 
-	todos, err := h.store.ListTodos(state, scope, search)
+	todos, err := h.store.ListTodos(store.Filter{State: state, Scope: scope, Query: search})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
