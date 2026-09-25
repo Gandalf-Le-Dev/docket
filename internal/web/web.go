@@ -224,12 +224,16 @@ func shortTime(rfc3339 string) string {
 
 // ago is how old an item reads at a glance; the exact time rides in a title
 // attribute next to it.
-func ago(rfc3339 string) string {
+func ago(rfc3339 string) string { return agoAt(rfc3339, time.Now()) }
+
+// agoAt's rules are ported to ago in static/app.js, which keeps a page's
+// times current without a reload: change both together.
+func agoAt(rfc3339 string, now time.Time) string {
 	t, err := time.Parse(time.RFC3339, rfc3339)
 	if err != nil {
 		return rfc3339
 	}
-	d := time.Since(t)
+	d := now.Sub(t)
 	switch {
 	case d < time.Minute:
 		return "just now"

@@ -13,6 +13,7 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"net/url"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -743,6 +744,85 @@ func TestAgo(t *testing.T) {
 	for in, want := range cases {
 		if got := ago(in); got != want {
 			t.Errorf("ago(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// agoCases are the thresholds app.js's ago copies: each unit starts at its
+// boundary, counts whole units, and a month on the date takes over. A clock
+// behind the stamp still reads just now.
+var agoCases = []struct {
+	age  time.Duration
+	want string
+}{
+	{-time.Hour, "just now"},
+	{0, "just now"},
+	{59 * time.Second, "just now"},
+	{time.Minute, "1m ago"},
+	{time.Hour - time.Second, "59m ago"},
+	{time.Hour, "1h ago"},
+	{24*time.Hour - time.Second, "23h ago"},
+	{24 * time.Hour, "1d ago"},
+	{30*24*time.Hour - time.Second, "29d ago"},
+	{30 * 24 * time.Hour, "Aug 26, 2026"},
+	{400 * 24 * time.Hour, "Aug 21, 2025"},
+}
+
+var agoNow = time.Date(2026, 9, 25, 12, 0, 0, 0, time.UTC)
+
+func TestAgoThresholds(t *testing.T) {
+	for _, c := range agoCases {
+		stamp := agoNow.Add(-c.age).Format(time.RFC3339)
+		if got := agoAt(stamp, agoNow); got != c.want {
+			t.Errorf("agoAt(%s) = %q, want %q", c.age, got, c.want)
+		}
+	}
+}
+
+// The ago in app.js gives what agoAt gives, case for case. It needs node, and
+// is skipped where there is none.
+func TestAgoInScript(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH")
+	}
+	src, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+	start, end := strings.Index(js, "  const months = "), strings.Index(js, "  function tick()")
+	if start < 0 || end < start {
+		t.Fatal("app.js: ago not found between `const months` and `function tick`")
+	}
+	type jsCase struct {
+		Stamp string `json:"stamp"`
+		Want  string `json:"want"`
+	}
+	var cases []jsCase
+	for _, c := range agoCases {
+		cases = append(cases, jsCase{agoNow.Add(-c.age).Format(time.RFC3339), c.want})
+	}
+	input, _ := json.Marshal(cases)
+	script := js[start:end] + `
+const cases = JSON.parse(require("fs").readFileSync(0, "utf8"));
+console.log(JSON.stringify(cases.map((c) => ago(c.stamp, ` + fmt.Sprint(agoNow.UnixMilli()) + `))));`
+	cmd := exec.Command(node, "-e", script)
+	cmd.Stdin = bytes.NewReader(input)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("node: %v", err)
+	}
+	var got []string
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatalf("node said %q: %v", out, err)
+	}
+	if len(got) != len(cases) {
+		t.Fatalf("node gave %d answers for %d cases: %q", len(got), len(cases), got)
+	}
+	for i, c := range cases {
+		if got[i] != c.Want {
+			t.Errorf("app.js ago(%s) = %q, want %q", c.Stamp, got[i], c.Want)
 		}
 	}
 }

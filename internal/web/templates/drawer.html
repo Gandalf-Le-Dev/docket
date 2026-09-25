@@ -35,7 +35,7 @@
     {{template "form-error" $s}}
     <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
     <dl class="facts">
-      <dt>Filed</dt><dd title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</dd>
+      <dt>Filed</dt><dd><time datetime="{{$t.CreatedAt}}" data-ago title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</time></dd>
       {{if $t.Via}}<dt>By</dt><dd>{{$t.Via}}</dd>{{end}}
       {{if $t.Source}}<dt>From</dt><dd>{{$t.Source}}</dd>{{end}}
     </dl>

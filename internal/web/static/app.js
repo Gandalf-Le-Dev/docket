@@ -1,9 +1,10 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
 // the text as the marker the server draws; a swap that leaves what it
-// brought out of sight scrolls to it; and a page refreshes itself when an
-// item changes anywhere (see live). Bodies arrive with htmx swaps as well as
-// with the page, so every listener sits on the document and finds its field
-// when the event comes, rather than binding to fields once at load.
+// brought out of sight scrolls to it; ages like "3h ago" keep counting; and
+// a page refreshes itself when an item changes anywhere (see live). Bodies
+// arrive with htmx swaps as well as with the page, so every listener sits on
+// the document and finds its field when the event comes, rather than
+// binding to fields once at load.
 (() => {
   "use strict";
 
@@ -141,6 +142,36 @@
     }
     field.ta.focus();
     upload(field.ta, field.status, files);
+  });
+
+  // A port of agoAt in web.go, rule for rule, so a page left open keeps its
+  // ages true: change both together (TestAgoInScript runs this on the cases
+  // TestAgoThresholds pins). The date is the stamp's own, in the offset it
+  // was written with.
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  function ago(stamp, now) {
+    const t = Date.parse(stamp);
+    if (Number.isNaN(t)) return stamp;
+    const d = now - t;
+    if (d < 60e3) return "just now";
+    if (d < 3600e3) return `${Math.floor(d / 60e3)}m ago`;
+    if (d < 86400e3) return `${Math.floor(d / 3600e3)}h ago`;
+    if (d < 30 * 86400e3) return `${Math.floor(d / 86400e3)}d ago`;
+    const zone = /([+-])(\d\d):(\d\d)$/.exec(stamp);
+    const offset = zone ? (zone[1] === "-" ? -1 : 1) * (Number(zone[2]) * 60 + Number(zone[3])) * 60e3 : 0;
+    const day = new Date(t + offset);
+    return `${months[day.getUTCMonth()]} ${day.getUTCDate()}, ${day.getUTCFullYear()}`;
+  }
+  function tick() {
+    const now = Date.now();
+    for (const el of document.querySelectorAll("time[data-ago]")) {
+      const text = ago(el.getAttribute("datetime"), now);
+      if (el.textContent !== text) el.textContent = text;
+    }
+  }
+  setInterval(tick, 60e3);
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) tick();
   });
 
   const liveHeader = "Docket-Live";

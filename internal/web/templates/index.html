@@ -83,7 +83,7 @@
         {{else if .Source}}<span class="src">from {{.Source}} · by {{.Via}}</span>
         {{else}}<span class="src">by {{.Via}}</span>{{end}}
       </span>
-      <span class="age" title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</span>
+      <time class="age" datetime="{{.CreatedAt}}" data-ago title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</time>
     </a>
   {{end}}
 </section>
