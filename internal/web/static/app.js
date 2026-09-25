@@ -69,6 +69,7 @@
       // numbered, so each upload finds its own placeholder whatever order they finish in
       const placeholder = `![Uploading image ${++uploads}…]()`;
       const inserted = insertLine(ta, placeholder);
+      fit(ta);
       if (form) setBusy(form, 1);
       post(file)
         .then((markdown) => replaceText(ta, placeholder, markdown))
@@ -78,6 +79,7 @@
           status.textContent = err.message;
         })
         .finally(() => {
+          fit(ta);
           if (form) setBusy(form, -1);
         });
     }
@@ -89,11 +91,28 @@
     return attach ? { ta, attach, status: attach.querySelector(".upload-status") } : null;
   }
 
+  const sizesItself = window.CSS && CSS.supports("field-sizing", "content");
+  function fit(ta) {
+    if (sizesItself || !ta.matches(".form textarea")) return;
+    // collapsing the field to measure it would scroll whatever holds it
+    const scroller = ta.closest(".drawer .body") || document.scrollingElement;
+    const top = scroller.scrollTop;
+    ta.style.height = "0";
+    const style = getComputedStyle(ta);
+    const borders = parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth);
+    ta.style.height = `${ta.scrollHeight + borders}px`;
+    scroller.scrollTop = top;
+  }
+
   function reveal(root) {
     for (const attach of root.querySelectorAll(".attach[hidden]")) attach.hidden = false;
+    for (const ta of root.querySelectorAll(".form textarea")) fit(ta);
   }
   reveal(document);
   document.addEventListener("htmx:load", (e) => reveal(e.target));
+  document.addEventListener("input", (e) => {
+    if (e.target instanceof HTMLTextAreaElement) fit(e.target);
+  });
 
   document.addEventListener("click", (e) => {
     const button = e.target instanceof Element && e.target.closest(".attach button");

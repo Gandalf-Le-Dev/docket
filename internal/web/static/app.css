@@ -360,6 +360,9 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
 .form textarea:has(+ .attach:not([hidden])) { margin-bottom: var(--space-2); }
+/* a body grows with what is typed until it would push Save out of reach,
+   then scrolls; app.js does the same where field-sizing is missing */
+.form textarea { field-sizing: content; min-height: 176px; max-height: 60vh; }
 .attach { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .attach[hidden] { display: none; }
 .attach .upload-status { font-size: 12px; line-height: 16px; color: var(--danger); }
