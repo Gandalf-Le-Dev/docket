@@ -725,15 +725,24 @@ func TestUndoFromToast(t *testing.T) {
 		t.Fatalf("stale undo changed the entry: %+v", got)
 	}
 
-	// Closed on its own page, the entry comes back there; a second undo has
-	// nothing left to reverse and says so.
+	// Closed on its own page, the entry comes back there; a second click on
+	// the same Undo has nothing left to reverse and says so.
 	_, body = post("/todo/close", url.Values{"id": {"1"}, "back_id": {"1"}})
 	form := toastUndo(body)
-	for i, want := range []string{"Restored #1.", "changed since it was closed"} {
+	for i, want := range []string{"Restored #1.", "#1 is already undone"} {
 		resp, body = post("/todo/undo", form)
 		if resp.Request.URL.Path != "/todo/1" || !strings.Contains(body, want) {
 			t.Fatalf("undo %d landed on %s without %q:\n%s", i+1, resp.Request.URL, want, body)
 		}
+	}
+
+	// An edit after the close leaves nothing to undo either, for a reason of
+	// its own.
+	_, body = post("/todo/close", url.Values{"id": {"1"}, "back_id": {"1"}})
+	form = toastUndo(body)
+	post("/todo/update", url.Values{"id": {"1"}, "title": {"edited since"}, "back_id": {"1"}})
+	if _, body = post("/todo/undo", form); !strings.Contains(body, "#1 has changed since it was closed") {
+		t.Fatalf("undo after an edit not refused:\n%s", body)
 	}
 }
 

@@ -59,7 +59,7 @@ CREATE TABLE IF NOT EXISTS image (
 
 -- What an item's latest close replaced, so UndoClose can put it back exactly.
 -- The id names that close; AUTOINCREMENT so no later close is ever given it.
--- Any other write to the item marks the row spent: no longer undoable.
+-- spent says why the close is no longer undoable, see undoLive.
 CREATE TABLE IF NOT EXISTS undo (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   todo_id    INTEGER NOT NULL UNIQUE,
@@ -71,6 +71,14 @@ CREATE TABLE IF NOT EXISTS undo (
   spent      INTEGER NOT NULL DEFAULT 0
 );
 `
+
+// An undo row's spent column. The undo marks its own row apart from any other
+// write, so a second click on one Undo can say it already ran.
+const (
+	undoLive    = 0
+	undoChanged = 1 // another write to the item since the close
+	undoUndone  = 2 // UndoClose ran
+)
 
 // Guard rails on publish: a publish token sits on the least-trusted machine
 // in the fleet, so writes are bounded.
@@ -423,7 +431,7 @@ func updateTodo(q querier, t Todo, u TodoUpdate) (Todo, error) {
 	); err != nil {
 		return Todo{}, err
 	}
-	_, err := q.Exec("UPDATE undo SET spent = 1 WHERE todo_id = ?", t.ID)
+	_, err := q.Exec("UPDATE undo SET spent = ? WHERE todo_id = ? AND spent = ?", undoChanged, t.ID, undoLive)
 	return t, err
 }
 
@@ -482,8 +490,9 @@ const UndoWindow = 24 * time.Hour
 
 // UndoClose puts an item back exactly as the close that returned undo found
 // it: body, state and both timestamps. Reopening instead keeps the verdict
-// note as history. A later close, any other write to the item, or UndoWindow
-// passing leaves that close with nothing to undo, and the error says which.
+// note as history. The undo having run already, a later close, any other
+// write to the item, or UndoWindow passing leaves that close with nothing to
+// undo, and the error says which.
 func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 	expired := ValidationError(fmt.Sprintf("nothing to undo on #%d: its undo has expired", id))
 	n, err := strconv.ParseInt(undo, 10, 64)
@@ -500,7 +509,7 @@ func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 		was := t.State
 		var closed sql.NullString
 		var at string
-		var spent bool
+		var spent int
 		err = tx.QueryRow("SELECT body, state, updated_at, closed_at, at, spent FROM undo WHERE id = ? AND todo_id = ?", n, id).
 			Scan(&t.Body, &t.State, &t.UpdatedAt, &closed, &at, &spent)
 		if errors.Is(err, sql.ErrNoRows) {
@@ -520,7 +529,9 @@ func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 			return nil, err
 		case at < undoCutoff():
 			return nil, expired
-		case spent:
+		case spent == undoUndone:
+			return nil, ValidationError(fmt.Sprintf("#%d is already undone", id))
+		case spent != undoLive:
 			return nil, ValidationError(fmt.Sprintf("#%d has changed since it was closed, so the close cannot be undone", id))
 		}
 		t.ClosedAt = closed.String
@@ -528,7 +539,7 @@ func (s *Store) UndoClose(id int64, undo string) (Todo, error) {
 			t.Body, t.State, t.UpdatedAt, closed, id); err != nil {
 			return nil, err
 		}
-		_, err = tx.Exec("UPDATE undo SET spent = 1 WHERE id = ?", n)
+		_, err = tx.Exec("UPDATE undo SET spent = ? WHERE id = ?", undoUndone, n)
 		return []Change{{ID: id, Op: stateOp(was, t.State)}}, err
 	})
 	if err != nil {
@@ -612,7 +623,8 @@ func (s *Store) RenameScope(from, to string) (int64, error) {
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
-		if _, err := tx.Exec("UPDATE undo SET spent = 1 WHERE todo_id IN (SELECT id FROM todo WHERE scope = ?)", from); err != nil {
+		if _, err := tx.Exec("UPDATE undo SET spent = ? WHERE spent = ? AND todo_id IN (SELECT id FROM todo WHERE scope = ?)",
+			undoChanged, undoLive, from); err != nil {
 			return nil, err
 		}
 		_, err = tx.Exec("UPDATE todo SET scope = ?, updated_at = ? WHERE scope = ?", to, now(), from)

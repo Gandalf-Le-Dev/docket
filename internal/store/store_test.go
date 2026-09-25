@@ -193,9 +193,15 @@ func TestUndoClose(t *testing.T) {
 	for _, reason := range []string{"not now", ""} {
 		undo(closeIt("dropped", reason), before)
 	}
+	// The same Undo twice says so, and still does after the item is edited.
 	token := closeIt("done", "")
 	undo(token, before)
-	refused(token, "changed since")
+	refused(token, "#1 is already undone")
+	body := before.Body
+	if _, err := s.UpdateTodo(id, TodoUpdate{Body: &body}); err != nil {
+		t.Fatal(err)
+	}
+	refused(token, "#1 is already undone")
 
 	// Two closes at the same instant are still told apart.
 	a, dropped := closeNow(t, s, id, "dropped")
