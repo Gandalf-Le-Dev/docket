@@ -190,6 +190,11 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   .new .words { position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip-path: inset(50%); white-space: nowrap; }
 }
+/* then the wordmark takes the phone's lockup, on the full one's line so the
+   band keeps its height when the drawer opens */
+@container (width < 424px) {
+  .wm { font-size: 32px; line-height: var(--lockup); }
+}
 .theme-pick:has(+ .menu:popover-open) { background: var(--surface-sunken); color: var(--ink); }
 .menu { min-width: 180px; padding: var(--space-2); border: var(--hairline) solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow-overlay);
