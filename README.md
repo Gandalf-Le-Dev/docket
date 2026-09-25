@@ -245,7 +245,9 @@ history.
 Every form opens in place, from a URL like the drawer. New entry puts its form in
 the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer or
 on its page (`do=edit`, `do=drop`). Rename turns a panel's name into an input
-(`/?rename=<scope>`). Renaming to a scope that exists merges the two.
+(`/?rename=<scope>`). Renaming to a scope that exists merges the two. A panel's
+"+ in <scope>" and Rename links show when the pointer is over the panel; on a
+touch screen, which has no pointer to hover, they always show.
 
 To fix only a title, click it, in the drawer or on the entry's page. With the
 keyboard, tab to the title and press Enter. The title turns into a field. Enter,

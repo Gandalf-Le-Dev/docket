@@ -424,6 +424,16 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
   .toasts { left: var(--space-4); bottom: var(--space-4); max-width: calc(100vw - 2 * var(--space-4)); }
   .live-note { right: var(--space-4); bottom: var(--space-4); }
 }
+/* Without hover a panel's tools could never be found, so they stay in view,
+   and the header wraps them below rather than squeeze the name and counts.
+   Some touch browsers claim hover; their pointer still gives them away. */
+@media (hover: none), (pointer: coarse) {
+  .panel > header { flex-wrap: wrap; height: auto; min-height: 28px; row-gap: var(--space-1); }
+  .panel > header .name { min-width: 0; overflow-wrap: anywhere; }
+  .panel > header .tools { opacity: 1; min-width: 0; max-width: 100%; }
+  .panel > header .tools a { display: block; min-width: 0; line-height: var(--control-height-sm);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
 @media (prefers-reduced-motion: reduce) {
   .btn, .entry, .panel > header .tools { transition-duration: 1ms; }
   .htmx-swapping .entry.on { animation-duration: 1ms; }
