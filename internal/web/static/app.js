@@ -275,6 +275,8 @@
 
   const liveHeader = "Docket-Live";
   const isLive = (config) => Boolean(config && config.headers && config.headers[liveHeader]);
+  const searchHeader = "Docket-Search";
+  const isSearch = (config) => Boolean(config && config.headers && config.headers[searchHeader]);
 
   // Swaps from the list keep its scroll, which can leave what they brought out
   // of sight: a failed action's message at the top of the list, or the drawer,
@@ -300,7 +302,7 @@
   // the server's error. Posts come back to a page and say what went wrong there.
   document.addEventListener("htmx:beforeSwap", (e) => {
     const { boosted, requestConfig, xhr, serverResponse, isError } = e.detail;
-    if (!boosted) return;
+    if (!boosted && !isSearch(requestConfig)) return;
     const page = new DOMParser().parseFromString(serverResponse, "text/html").getElementById("page");
     const stale = page && !isError && page.dataset.asset !== asset;
     const offPage = requestConfig.verb === "get" && (isError || !page);
@@ -338,6 +340,138 @@
     },
     true,
   );
+
+  // The list follows the search field as it is typed in, a quarter second
+  // after the last key. Each search replaces the address rather than adding
+  // to history, so back leaves the list instead of stepping through every
+  // prefix typed; one begun on an entry's page leaves that page, so it adds
+  // one entry and back returns there. Enter runs the search at once. One
+  // search runs at a time, and one asked for meanwhile waits for it to land,
+  // then compares with the address it left: htmx's own queue would swap the
+  // late one into the #page the first had already replaced.
+  let searchTimer = 0;
+  let searching = false;
+  let searchAgain = false;
+  let searchXhr = null;
+  function search() {
+    clearTimeout(searchTimer);
+    searchTimer = 0;
+    if (searching) {
+      searchAgain = true;
+      return;
+    }
+    const form = document.querySelector("#page form[role=search]");
+    if (!form || !window.htmx) return;
+    const params = new URLSearchParams();
+    for (const [k, v] of new FormData(form)) if (v !== "") params.append(k, v);
+    params.sort();
+    const current = new URLSearchParams(location.search);
+    current.sort();
+    const path = new URL(form.action).pathname;
+    if (path === location.pathname && params.toString() === current.toString()) return;
+    const url = params.toString() ? `${path}?${params}` : path;
+    searching = true;
+    htmx
+      .ajax("GET", url, {
+        // not the body, whose requests are the live refresh's (see refresh)
+        source: document.documentElement,
+        target: "#page",
+        select: "#page",
+        swap: "outerHTML",
+        headers: { [searchHeader]: "1" },
+        [path === location.pathname ? "replace" : "push"]: url,
+      })
+      // an abort, when a link overtakes the search, is the search's end
+      .catch(() => {})
+      .finally(() => {
+        searching = false;
+        searchXhr = null;
+        if (searchAgain) {
+          searchAgain = false;
+          search();
+        }
+      });
+  }
+  // Text typed into a form that keeps no draft, a drop's reason or a scope's
+  // new name, would go with the page a search brings; the typed search waits
+  // until that text is sent or emptied, and each change or focus leaving
+  // that form asks again. Enter still searches at once.
+  let searchHeld = false;
+  function unsaved() {
+    for (const form of document.querySelectorAll("#page form:not([role=search], [data-draft])")) {
+      for (const field of form.querySelectorAll("input[type=text], textarea")) {
+        if (field.value !== field.defaultValue) return true;
+      }
+    }
+    return false;
+  }
+  function searchSoon() {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      searchTimer = 0;
+      searchHeld = unsaved();
+      if (!searchHeld) search();
+    }, 250);
+  }
+  const searchField = (el) =>
+    el instanceof HTMLInputElement && el.matches("#page form[role=search] input[type=search]");
+  // an input method's text is not typed until its composition ends
+  document.addEventListener("input", (e) => {
+    if (searchField(e.target) ? window.htmx && !e.isComposing : searchHeld) searchSoon();
+  });
+  document.addEventListener("focusout", () => {
+    if (searchHeld) searchSoon();
+  });
+  document.addEventListener("compositionend", (e) => {
+    if (searchField(e.target) && window.htmx) searchSoon();
+  });
+  // A link or form taken while a search is due or on its way goes where it
+  // was asked to: the search would land after it and take the page back to
+  // the list.
+  document.addEventListener("htmx:beforeSend", (e) => {
+    if (isSearch(e.detail.requestConfig)) searchXhr = e.detail.xhr;
+  });
+  document.addEventListener("htmx:beforeRequest", (e) => {
+    const config = e.detail.requestConfig;
+    if (isSearch(config) || isLive(config)) return;
+    clearTimeout(searchTimer);
+    searchTimer = 0;
+    searchAgain = false;
+    searchHeld = false;
+    if (searchXhr) searchXhr.abort();
+  });
+  document.addEventListener(
+    "submit",
+    (e) => {
+      if (!window.htmx || !e.target.matches("#page form[role=search]")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      search();
+    },
+    true,
+  );
+
+  // A swap replaces the search field while it is being typed in: its
+  // results arrive, or the page refreshes. The new field keeps the focus,
+  // the caret and whatever was typed after the request left, and text the
+  // page did not search for gets its search.
+  let typing = null;
+  document.addEventListener("htmx:beforeSwap", () => {
+    const el = document.activeElement;
+    typing = searchField(el)
+      ? { el, value: el.value, start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection }
+      : null;
+  });
+  document.addEventListener("htmx:afterSwap", () => {
+    const was = typing;
+    typing = null;
+    const q = document.querySelector("#page form[role=search] input[type=search]");
+    if (!was || was.el.isConnected || !q) return;
+    q.value = was.value;
+    q.focus({ preventScroll: true });
+    q.setSelectionRange(was.start, was.end, was.dir);
+    if (q.value !== q.defaultValue && !searchTimer && !searching) searchSoon();
+  });
 
   if (document.getElementById("page") && window.htmx && window.EventSource) live();
 
@@ -387,8 +521,8 @@
     // A form someone is filling in, which a swap would throw away. One that
     // is open but untouched and unfocused is not held: the refresh brings it
     // back with the item's new values. The search field holds only while it
-    // differs from the query shown, focused or not: focus alone survives the
-    // swap (see settle), unsubmitted text would not.
+    // has text its search has not applied yet, which lasts until the search
+    // runs: that search brings a newer page than the refresh would.
     function held() {
       const active = document.activeElement;
       if (popoverOpen()) return true;
@@ -571,16 +705,15 @@
     }
 
     // Names the focused element in a way that survives the swap replacing
-    // it: its id, or for the search field and links, which have none, a
-    // selector and its place among the matches. Links share hrefs (the
-    // wordmark, the Open tab and the drawer's Close all go to /), and the
-    // click-away backdrop, which no keyboard reaches, is left out.
+    // it: its id, or for links, which have none, a selector and its place
+    // among the matches. Links share hrefs (the wordmark, the Open tab and
+    // the drawer's Close all go to /), and the click-away backdrop, which no
+    // keyboard reaches, is left out. The search field keeps itself (typing).
     function focused() {
       const el = document.activeElement;
       if (!el || !el.closest("#page")) return null;
       let selector = "";
       if (el.id) selector = "#" + CSS.escape(el.id);
-      else if (el.matches("input[type=search]")) selector = "#page input[type=search]";
       else if (el.hasAttribute("href"))
         selector = `#page a[href="${CSS.escape(el.getAttribute("href"))}"]:not([tabindex="-1"], [aria-hidden="true"])`;
       if (!selector) return null;
@@ -603,10 +736,7 @@
       const drawer = document.querySelector("#page .drawer .body");
       if (drawer) drawer.scrollTop = was.scroll;
       const el = was.focus && document.querySelectorAll(was.focus.selector)[was.focus.index];
-      if (el) {
-        el.focus({ preventScroll: true });
-        if (el.matches("input[type=search]")) el.setSelectionRange(el.value.length, el.value.length);
-      }
+      if (el) el.focus({ preventScroll: true });
       return true;
     }
 
