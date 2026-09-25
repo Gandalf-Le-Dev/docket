@@ -295,13 +295,17 @@ func (h *Handler) instructions(role string) string {
 			"but out of scope for the repo or conversation you are in, file it with todo_add " +
 			"instead of dropping it. Always set source to where you noticed it (repo, " +
 			"conversation, URL) — who noticed this is most of the context. Keep the title short; " +
-			"detail goes in body. The result carries the item's url, the link to give a person."
+			"detail goes in body. Set flairs to the kinds of work the item is, in short common " +
+			"words such as bug, feature, docs, infra, art or gameplay, so the owner can tell " +
+			"items apart at a glance. The result carries the item's url, the link to give a person."
 	}
 	return "Docket is the owner's cross-project backlog. Agents file items with todo_add; " +
 		"review, edit, and close them from here with todo_list, todo_get, todo_update, " +
-		"todo_close, and todo_scopes. Every item carries url, the link to hand to a person " +
-		"or paste into a commit message. Closing with outcome=dropped records a deliberate " +
-		"won't-do verdict, which is worth preferring over deleting."
+		"todo_close, todo_scopes, and todo_flairs. Every item carries url, the link to hand " +
+		"to a person or paste into a commit message. Flairs say what kind of work an item is " +
+		"(bug, art, gameplay, infra): check todo_flairs and reuse a flair already there " +
+		"rather than inventing a near-duplicate. Closing with outcome=dropped records a " +
+		"deliberate won't-do verdict, which is worth preferring over deleting."
 }
 
 // --- tools ---
@@ -318,14 +322,17 @@ var addTool = toolDef{
 		"that is real but out of scope for the current repo or conversation, so it is not dropped. " +
 		"Always set source to where you noticed it (repo name, conversation, URL). If an open item " +
 		"already has the same title and scope, its id is returned with duplicate=true instead of " +
-		"filing a second copy. The result carries the item's url, the link to give a person.",
+		"filing a second copy, and that item keeps its own flairs. Set flairs to the kinds of work the " +
+		"item is (bug, feature, docs, infra, art, gameplay...), reusing flairs already in use rather than " +
+		"near-duplicates. The result carries the item's url, the link to give a person.",
 	InputSchema: json.RawMessage(`{
 		"type": "object",
 		"properties": {
 			"title":  {"type": "string", "description": "Short imperative summary of the work (max 500 bytes)"},
 			"body":   {"type": "string", "description": "Optional detail: context, links, why it matters (max 64KB)"},
 			"scope":  {"type": "string", "description": "Freeform grouping, e.g. a project name or 'personal'; normalized to lowercase"},
-			"source": {"type": "string", "description": "Where this was noticed: repo, conversation, URL. Always set it."}
+			"source": {"type": "string", "description": "Where this was noticed: repo, conversation, URL. Always set it."},
+			"flairs": {"type": "array", "items": {"type": "string"}, "description": "Kinds of work this is, e.g. [\"bug\", \"gameplay\"]; lowercased, at most 10, each at most 40 bytes, no commas"}
 		},
 		"required": ["title"]
 	}`),
@@ -334,13 +341,14 @@ var addTool = toolDef{
 var reviewTools = []toolDef{
 	{
 		Name:        "todo_list",
-		Description: "Read the backlog. state defaults to open; use all to include closed items. q is a substring match over title and body.",
+		Description: "Read the backlog. state defaults to open; use all to include closed items. q is a substring match over title, body and flairs.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
 				"scope": {"type": "string", "description": "Only items in this scope"},
+				"flair": {"type": "string", "description": "Only items carrying this flair"},
 				"state": {"type": "string", "enum": ["open", "done", "dropped", "all"], "description": "Defaults to open"},
-				"q":     {"type": "string", "description": "Substring match over title and body"}
+				"q":     {"type": "string", "description": "Substring match over title, body and flairs"}
 			}
 		}`),
 	},
@@ -355,16 +363,19 @@ var reviewTools = []toolDef{
 		}`),
 	},
 	{
-		Name:        "todo_update",
-		Description: "Edit an item's title, body, scope, or state. Setting state back to open reopens a closed item.",
+		Name: "todo_update",
+		Description: "Edit an item's title, body, scope, flairs, or state; fields left out stay as they are. " +
+			"flairs replaces the item's whole set, so send every flair it should keep, and [] clears them; " +
+			"reuse flairs from todo_flairs rather than near-duplicates. Setting state back to open reopens a closed item.",
 		InputSchema: json.RawMessage(`{
 			"type": "object",
 			"properties": {
-				"id":    {"type": "integer"},
-				"title": {"type": "string"},
-				"body":  {"type": "string"},
-				"scope": {"type": "string"},
-				"state": {"type": "string", "enum": ["open", "done", "dropped"]}
+				"id":     {"type": "integer"},
+				"title":  {"type": "string"},
+				"body":   {"type": "string"},
+				"scope":  {"type": "string"},
+				"flairs": {"type": "array", "items": {"type": "string"}, "description": "The item's new set of flairs, replacing the old one"},
+				"state":  {"type": "string", "enum": ["open", "done", "dropped"]}
 			},
 			"required": ["id"]
 		}`),
@@ -385,6 +396,12 @@ var reviewTools = []toolDef{
 	{
 		Name:        "todo_scopes",
 		Description: "List the scopes in use, each with its open item count.",
+		InputSchema: json.RawMessage(`{"type": "object", "properties": {}}`),
+	},
+	{
+		Name: "todo_flairs",
+		Description: "List every flair in use, most used first, each with how many open items carry it (0 when all its items are closed). " +
+			"Check it before setting flairs, and reuse one that fits rather than a near-duplicate.",
 		InputSchema: json.RawMessage(`{"type": "object", "properties": {}}`),
 	},
 }
@@ -494,6 +511,28 @@ func stringArg(args map[string]any, key string) string {
 	return s
 }
 
+// flairsArg is the flairs argument, and whether it was given at all: absent
+// or null leaves an item's flairs alone, while [] clears them.
+func flairsArg(args map[string]any) (flairs []string, present bool, err error) {
+	raw := args["flairs"]
+	if raw == nil {
+		return nil, false, nil
+	}
+	list, ok := raw.([]any)
+	if !ok {
+		return nil, true, errors.New("flairs must be an array of strings")
+	}
+	flairs = []string{}
+	for _, v := range list {
+		f, ok := v.(string)
+		if !ok {
+			return nil, true, errors.New("flairs must be an array of strings")
+		}
+		flairs = append(flairs, f)
+	}
+	return flairs, true, nil
+}
+
 func intArg(args map[string]any, key string) (int64, bool) {
 	switch v := args[key].(type) {
 	case float64:
@@ -566,12 +605,18 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 			toolError(w, req.ID, fmt.Sprintf("rate limit exceeded: at most %d adds per hour per token", AddRateLimit))
 			return
 		}
+		flairs, _, err := flairsArg(p.Arguments)
+		if err != nil {
+			toolError(w, req.ID, err.Error())
+			return
+		}
 		id, dup, err := h.Store.AddTodo(
 			stringArg(p.Arguments, "title"),
 			stringArg(p.Arguments, "body"),
 			stringArg(p.Arguments, "scope"),
 			stringArg(p.Arguments, "source"),
 			tokenName,
+			flairs...,
 		)
 		if err != nil {
 			fail(err)
@@ -583,6 +628,7 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 		todos, err := h.Store.ListTodos(store.Filter{
 			State: stringArg(p.Arguments, "state"),
 			Scope: stringArg(p.Arguments, "scope"),
+			Flair: stringArg(p.Arguments, "flair"),
 			Query: stringArg(p.Arguments, "q"),
 		})
 		if err != nil {
@@ -625,6 +671,14 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 				*dst = &s
 			}
 		}
+		flairs, present, err := flairsArg(p.Arguments)
+		if err != nil {
+			toolError(w, req.ID, err.Error())
+			return
+		}
+		if present {
+			u.Flairs = &flairs
+		}
 		t, err := h.Store.UpdateTodo(id, u)
 		if err != nil {
 			fail(err)
@@ -656,6 +710,18 @@ func (h *Handler) handleToolCall(w http.ResponseWriter, r *http.Request, req *rp
 			out = append(out, map[string]any{"scope": sc.Scope, "open": sc.Open})
 		}
 		toolResult(w, req.ID, map[string]any{"scopes": out})
+
+	case "todo_flairs":
+		flairs, err := h.Store.Flairs()
+		if err != nil {
+			fail(err)
+			return
+		}
+		out := make([]map[string]any, 0, len(flairs))
+		for _, f := range flairs {
+			out = append(out, map[string]any{"flair": f.Flair, "open": f.Open})
+		}
+		toolResult(w, req.ID, map[string]any{"flairs": out})
 	}
 }
 
@@ -666,6 +732,7 @@ func todoJSON(t store.Todo, base string) map[string]any {
 		"title":      t.Title,
 		"body":       t.Body,
 		"scope":      t.Scope,
+		"flairs":     t.Flairs,
 		"source":     t.Source,
 		"via":        t.Via,
 		"state":      t.State,

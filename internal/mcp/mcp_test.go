@@ -212,7 +212,7 @@ func TestRoleFiltersToolList(t *testing.T) {
 		t.Fatalf("publish sees: %v", pub)
 	}
 	rev := names(e.review)
-	if len(rev) != 6 {
+	if len(rev) != 7 {
 		t.Fatalf("review sees: %v", rev)
 	}
 }
@@ -708,5 +708,92 @@ func TestItemURLConfigured(t *testing.T) {
 	_, r := e.call(t, e.publish, h, b)
 	if got := structured(t, r)["url"]; got != "https://todo.example.org/todo/1" {
 		t.Fatalf("configured url = %v", got)
+	}
+}
+
+// An agent sets flairs when it files and when it edits, reads them back on
+// every item, filters by one, and lists those in use to reuse them.
+func TestFlairs(t *testing.T) {
+	e := newEnv(t)
+	call := func(token, name, args string) map[string]any {
+		t.Helper()
+		_, r := e.call(t, token, nil, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, name, args))
+		return structured(t, r)
+	}
+	flairs := func(item any) string {
+		t.Helper()
+		b, _ := json.Marshal(item.(map[string]any)["flairs"])
+		return string(b)
+	}
+
+	call(e.publish, "todo_add", `{"title":"sprite sheet","scope":"game","flairs":[" Art ","art"]}`)
+	call(e.publish, "todo_add", `{"title":"crash on load","scope":"game","flairs":["bug","gameplay"]}`)
+	call(e.publish, "todo_add", `{"title":"plain","scope":"game","flairs":null}`)
+
+	got := call(e.review, "todo_get", `{"id":1}`)["todo"]
+	if flairs(got) != `["art"]` {
+		t.Fatalf("get: %s", flairs(got))
+	}
+	if got := call(e.review, "todo_get", `{"id":3}`)["todo"]; flairs(got) != `[]` {
+		t.Fatalf("no flairs should read as []: %s", flairs(got))
+	}
+	list := call(e.review, "todo_list", `{"flair":"BUG"}`)["todos"].([]any)
+	if len(list) != 1 || flairs(list[0]) != `["bug","gameplay"]` {
+		t.Fatalf("list by flair: %v", list)
+	}
+	if list := call(e.review, "todo_list", `{"q":"gamepl"}`)["todos"].([]any); len(list) != 1 {
+		t.Fatalf("q over flairs: %v", list)
+	}
+
+	// Left out, flairs stay; given, they replace the set; [] clears it.
+	if got := call(e.review, "todo_update", `{"id":2,"title":"crash on boot"}`)["todo"]; flairs(got) != `["bug","gameplay"]` {
+		t.Fatalf("update without flairs: %s", flairs(got))
+	}
+	if got := call(e.review, "todo_update", `{"id":2,"flairs":null}`)["todo"]; flairs(got) != `["bug","gameplay"]` {
+		t.Fatalf("update with null flairs: %s", flairs(got))
+	}
+	if got := call(e.review, "todo_update", `{"id":2,"flairs":["bug"]}`)["todo"]; flairs(got) != `["bug"]` {
+		t.Fatalf("update with flairs: %s", flairs(got))
+	}
+	if got := call(e.review, "todo_update", `{"id":1,"flairs":[]}`)["todo"]; flairs(got) != `[]` {
+		t.Fatalf("clearing flairs: %s", flairs(got))
+	}
+
+	b, _ := json.Marshal(call(e.review, "todo_flairs", `{}`)["flairs"])
+	if string(b) != `[{"flair":"bug","open":1}]` {
+		t.Fatalf("todo_flairs: %s", b)
+	}
+
+	for name, args := range map[string]string{
+		"todo_add":    `{"title":"x","flairs":"bug"}`,
+		"todo_update": `{"id":2,"flairs":[1]}`,
+	} {
+		_, r := e.call(t, e.review, nil, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":%s}}`, name, args))
+		if msg := toolErrText(t, r); msg != "flairs must be an array of strings" {
+			t.Fatalf("%s: %q", name, msg)
+		}
+	}
+	_, r := e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"x","flairs":["a,b"]}}}`)
+	if msg := toolErrText(t, r); !strings.Contains(msg, "comma") {
+		t.Fatalf("comma: %q", msg)
+	}
+	_, r = e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_add","arguments":{"title":"x","flairs":["a\u200bb"]}}}`)
+	if msg := toolErrText(t, r); !strings.Contains(msg, "invisible") {
+		t.Fatalf("zero-width space: %q", msg)
+	}
+	if got := call(e.publish, "todo_add", `{"title":"spaced","flairs":["Level\n  Design"]}`); got["duplicate"] != false {
+		t.Fatalf("spaced add: %v", got)
+	}
+	if got := call(e.review, "todo_list", `{"flair":"level design"}`)["todos"].([]any); len(got) != 1 || flairs(got[0]) != `["level design"]` {
+		t.Fatalf("whitespace in a flair: %v", got)
+	}
+	_, r = e.call(t, e.publish, nil,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"todo_flairs","arguments":{}}}`)
+	if r.Error == nil || r.Error.Code != codeInvalidParams {
+		t.Fatalf("publish read flairs: %+v", r.Error)
 	}
 }
