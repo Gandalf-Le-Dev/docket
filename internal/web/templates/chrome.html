@@ -137,5 +137,9 @@
 {{/* the classes that put a scope's color behind its name; unscoped has none */}}
 {{define "tint"}}{{with .}} tint {{.}}{{end}}{{end}}
 
+{{/* an item's flairs, each an outlined chip with its color as a dot, so it
+     never reads as a scope, whose color fills behind its name */}}
+{{define "flairs"}}{{with .}}<span class="flairs">{{range .}}<span class="flair {{flairHue .}}">{{.}}</span>{{end}}</span>{{end}}{{end}}
+
 {{/* a scope with nothing open does not exist, so it is not suggested */}}
 {{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

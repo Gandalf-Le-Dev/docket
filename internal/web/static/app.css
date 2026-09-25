@@ -241,6 +241,18 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .pill.tint { border-color: color-mix(in srgb, var(--hue) 60%, var(--surface-raised)); }
 .drawer .crumb.tint { color: var(--ink); padding: 1px 6px; }
 .facts a.tint { text-decoration: none; }
+/* A flair is outlined, its color a dot beside its name: a kind of work, never
+   mistaken for a scope, whose color fills behind the name. A name too long
+   for the row is cut short rather than widen it. */
+.flairs { display: flex; flex-wrap: wrap; gap: var(--space-1); min-width: 0; }
+.flair { display: inline-block; max-width: 100%; height: 20px; padding: 0 7px 0 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: var(--hairline) solid color-mix(in srgb, var(--hue) 50%, var(--border));
+  border-radius: 10px; background: var(--surface-raised);
+  font-family: var(--font-mono); font-size: 11px; line-height: 18px; font-weight: 500;
+  color: var(--ink-muted); text-decoration: none; }
+.flair::before { content: ""; display: inline-block; width: 7px; height: 7px; margin-right: 5px;
+  border-radius: 50%; background: var(--hue); vertical-align: 1px; }
 .pill { display: inline-flex; align-items: center; gap: 6px; height: var(--control-height-sm);
   padding: 0 var(--space-3); border-radius: var(--radius-md);
   border: var(--hairline) solid var(--border); background: var(--surface-raised);
@@ -286,14 +298,21 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .entry .title { display: block; font-size: 15px; line-height: 22px; font-weight: 600; color: var(--ink); }
 .entry .src { display: block; font-family: var(--font-mono); font-size: 11px; line-height: 16px;
   font-weight: 500; color: var(--ink-muted); margin-top: 3px; word-break: break-word; }
+/* a flair too long for the row is cut short, never widens it */
+.entry > span:nth-child(2) { min-width: 0; }
+.entry .flairs { margin-top: var(--space-1); }
 .entry .reason { display: block; font-size: 13px; line-height: 20px; color: var(--ink-muted); margin-top: 3px; }
 .entry .age { font-family: var(--font-mono); font-size: 11px; font-weight: 500;
   color: var(--ink-muted); white-space: nowrap; }
 /* compact: one line per entry; source and via wait in the drawer */
 .compact .entry { padding-top: var(--space-1); padding-bottom: var(--space-1); }
-.compact .entry > span:nth-child(2) { min-width: 0; }
-.compact .entry .title { font-size: 14px; line-height: 20px;
+/* flairs share the title's line while it keeps room to be read, and wrap
+   below it on a narrow screen */
+.compact .entry > span:nth-child(2) { display: flex; flex-wrap: wrap; align-items: center;
+  column-gap: var(--space-2); row-gap: 2px; }
+.compact .entry .title { flex: 1 1 16ch; min-width: 0; font-size: 14px; line-height: 20px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.compact .entry .flairs { margin-top: 0; }
 .compact .entry .src, .compact .entry .reason { display: none; }
 /* a refresh can reorder the list; the tint shows the eye what it changed */
 .entry.fresh { animation: fresh 1500ms ease-out; }
@@ -365,6 +384,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .facts dd { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 20px; font-weight: 500;
   color: var(--ink); word-break: break-word; }
 .facts a { color: var(--ink); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.drawer .body > .flairs { margin: 0 0 var(--space-4); }
+.doc .main > .flairs { margin: calc(-1 * var(--space-3)) 0 var(--space-5); }
 .drawer .facts { margin: 0 0 var(--space-5); padding: 0; border: 0; gap: var(--space-1) var(--space-4); }
 .acts { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
 

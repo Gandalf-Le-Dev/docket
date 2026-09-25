@@ -1610,3 +1610,49 @@ func TestWinks(t *testing.T) {
 		}
 	}
 }
+
+// An item's flairs show as chips on its row, in either density, in the
+// drawer and on its page, each in the color its name alone decides.
+func TestFlairsShow(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("crash on load", "", "game", "test", "t", "bug", "gameplay"); err != nil {
+		t.Fatal(err)
+	}
+	chip := func(f string) string { return `<span class="flair ` + flairHue(f) + `">` + f + `</span>` }
+	get := func(path string) string {
+		t.Helper()
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	for _, path := range []string{"/", "/?open=1", "/todo/1"} {
+		body := get(path)
+		for _, f := range []string{"bug", "gameplay"} {
+			if n := strings.Count(body, chip(f)); n < 1 || (path == "/?open=1" && n != 2) {
+				t.Fatalf("%s shows %s %d times:\n%s", path, chip(f), n, body)
+			}
+		}
+	}
+	c.Jar.SetCookies(mustURL(t, srv.URL), []*http.Cookie{{Name: densityCookie, Value: "compact"}})
+	if body := get("/"); !strings.Contains(body, `with-drawer compact"`) || !strings.Contains(body, chip("bug")) {
+		t.Fatalf("compact row lost its flairs:\n%s", body)
+	}
+	for _, f := range []string{"", "art", "infra", "a much longer flair name"} {
+		if n, err := strconv.Atoi(strings.TrimPrefix(flairHue(f), "hue-")); err != nil || n < 0 || n >= hues {
+			t.Fatalf("flairHue(%q) = %q", f, flairHue(f))
+		}
+	}
+}
+
+func mustURL(t *testing.T, raw string) *url.URL {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return u
+}

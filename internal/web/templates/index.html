@@ -79,6 +79,7 @@
       <span class="id">{{.ID}}</span>
       <span>
         <span class="title">{{.Title}}</span>
+        {{template "flairs" .Flairs}}
         {{if .Verdict}}<span class="reason">{{excerpt .Verdict}}</span>
         {{else if .Source}}<span class="src">from {{.Source}} · by {{.Via}}</span>
         {{else}}<span class="src">by {{.Via}}</span>{{end}}

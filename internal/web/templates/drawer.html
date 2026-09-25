@@ -51,6 +51,7 @@
         aria-describedby="retitle-hint">{{$t.Title}}</button></h1>
       <span id="retitle-hint" hidden>Edit title</span>
     </form>{{end}}
+    {{template "flairs" $t.Flairs}}
     <dl class="facts">
       <dt>Filed</dt><dd><time datetime="{{$t.CreatedAt}}" data-ago title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</time></dd>
       {{if $t.Via}}<dt>By</dt><dd>{{$t.Via}}</dd>{{end}}

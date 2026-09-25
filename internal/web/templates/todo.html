@@ -56,6 +56,7 @@
           aria-describedby="retitle-hint">{{.Item.Title}}</button></h1>
         <span id="retitle-hint" hidden>Edit title</span>
       </form>{{end}}
+      {{template "flairs" .Item.Flairs}}
       {{if .Item.Verdict}}
         <p class="verdict" hx-boost="false"><b>{{if eq .Item.State "done"}}Done.{{else}}Dropped.{{end}}</b> {{body .Item.Verdict}}</p>
       {{end}}

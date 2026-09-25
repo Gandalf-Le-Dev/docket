@@ -38,6 +38,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash/fnv"
 	"html/template"
 	"io"
 	"log"
@@ -91,6 +92,7 @@ func NewHandler(s *store.Store) *Handler {
 			"excerpt":   excerpt,
 			"query":     query,
 			"dict":      dict,
+			"flairHue":  flairHue,
 		}).ParseFS(templateFS, "templates/*.html")),
 		mux:  http.NewServeMux(),
 		beat: heartbeat,
@@ -207,6 +209,16 @@ func scopeHues(sums []store.ScopeStats) map[string]string {
 		m[sum.Scope] = fmt.Sprintf("hue-%d", i%hues)
 	}
 	return m
+}
+
+// flairHue gives a flair a color class by its name alone, so it is the same
+// on every page and in every list without anything recording it. The hue
+// comes from the hash's high bits: FNV's low bits mix poorly, and a modulo
+// put bug, gameplay, infra and feature all on one color.
+func flairHue(flair string) string {
+	h := fnv.New32a()
+	h.Write([]byte(flair))
+	return fmt.Sprintf("hue-%d", uint64(h.Sum32())*hues>>32)
 }
 
 // winks schedules the wordmark's three winks for one page load, as the CSS
