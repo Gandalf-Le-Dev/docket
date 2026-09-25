@@ -110,6 +110,43 @@ func TestHTMXGoesToLoginWhole(t *testing.T) {
 	}
 }
 
+// Every signed-in page's header offers Sign out, as a plain form that works
+// without script and leaves the browser signed out on the login page.
+func TestSignOutInHeader(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("an entry", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	signOut := regexp.MustCompile(`(?s)<div id="theme-menu" class="menu" popover>.*` +
+		`<form method="post" action="/logout" data-sign-out>\s*<button type="submit">.*Sign out</button>`)
+	for _, path := range []string{"/", "/?open=1", "/todo/1"} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body := readAll(t, resp); !signOut.MatchString(body) {
+			t.Fatalf("%s has no sign-out in its header:\n%s", path, body)
+		}
+	}
+	resp, err := c.PostForm(srv.URL+"/logout", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/login" {
+		t.Fatalf("sign out landed on %s", resp.Request.URL)
+	}
+	if resp, err = c.Get(srv.URL + "/"); err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.Request.URL.Path != "/login" {
+		t.Fatalf("still signed in after sign out: %s", resp.Request.URL)
+	}
+}
+
 func TestPublishTokenRejected(t *testing.T) {
 	srv, _, _, publish := newEnv(t)
 	c := client(t)

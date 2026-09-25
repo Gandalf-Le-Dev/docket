@@ -268,7 +268,8 @@ says so. The fields you did not type in already show that change, but a field yo
 did type in shows your text, not the server's, so check it before you save.
 Saving clears the draft; Cancel keeps it. A draft is deleted after 7 days, when
 the images it shows may be gone from the server. Drafts stay on that device, and
-a browser that does not allow storage simply keeps none.
+a browser that does not allow storage simply keeps none. Signing out deletes
+every draft on the device.
 
 A save never overwrites a change that you have not seen. If the entry changed
 after you opened its edit form or its title field, for example because an agent
@@ -283,7 +284,8 @@ Each scope has a color, shown behind its name wherever the name appears. Colors
 follow the order in which scopes came into use, so the first eight scopes never
 share one. A switch in the tab row turns on compact rows, with one line
 per entry. A switch in the header sets the theme: follow the system, light, or dark.
-Both choices are kept in a cookie on the device.
+Both choices are kept in a cookie on the device. The theme switch's menu also has
+Sign out, which ends the session on the device and returns to the sign-in page.
 
 The look is the [mroc design system](https://github.com/Gandalf-Le-Dev/mroc-design-system):
 `internal/web/static/app.css` holds its tokens and `internal/web/static/fonts/` its

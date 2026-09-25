@@ -167,7 +167,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .menu { min-width: 180px; padding: var(--space-2); border: var(--hairline) solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow-overlay);
   color: var(--ink); }
-.menu:popover-open { display: flex; flex-direction: column; gap: 2px; }
+.menu:popover-open, .menu form { display: flex; flex-direction: column; gap: 2px; }
+.menu hr { width: 100%; margin: var(--space-1) 0; border: 0; border-top: var(--hairline) solid var(--border); }
 /* without anchor positioning the popover keeps its default, centered */
 @supports (position-area: bottom) {
   .menu { position-anchor: --theme; position-area: bottom span-left; inset: auto; margin: 6px 0 0; }

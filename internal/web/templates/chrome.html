@@ -44,20 +44,30 @@
 {{define "icon-auto"}}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>{{end}}
 {{define "icon-light"}}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>{{end}}
 {{define "icon-dark"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>{{end}}
+{{/* Lucide's log-out */}}
+{{define "icon-sign-out"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>{{end}}
 
 {{/* a popover closes on a click outside or Escape without any script; the
-     theme lives on <html>, outside what a swap replaces, so it reloads */}}
+     theme lives on <html>, outside what a swap replaces, so it reloads.
+     Sign out shares the menu: a narrow header has no room for another
+     button. */}}
 {{define "theme"}}
-  <button type="button" class="icon theme-pick" popovertarget="theme-menu" title="Theme"
+  <button type="button" class="icon theme-pick" popovertarget="theme-menu" title="Theme, sign out"
     aria-label="Theme: {{if eq .Theme "light"}}Light{{else if eq .Theme "dark"}}Dark{{else}}System{{end}}">
     {{- if eq .Theme "light"}}{{template "icon-light"}}{{else if eq .Theme "dark"}}{{template "icon-dark"}}{{else}}{{template "icon-auto"}}{{end -}}
   </button>
-  <form id="theme-menu" class="menu" popover method="post" action="/theme" aria-label="Theme" hx-boost="false">
-    <input type="hidden" name="back" value="{{.Here}}">
-    <button type="submit" name="to" value="auto"{{if not .Theme}} class="on" aria-current="true"{{end}}>{{template "icon-auto"}}System</button>
-    <button type="submit" name="to" value="light"{{if eq .Theme "light"}} class="on" aria-current="true"{{end}}>{{template "icon-light"}}Light</button>
-    <button type="submit" name="to" value="dark"{{if eq .Theme "dark"}} class="on" aria-current="true"{{end}}>{{template "icon-dark"}}Dark</button>
-  </form>
+  <div id="theme-menu" class="menu" popover>
+    <form method="post" action="/theme" aria-label="Theme" hx-boost="false">
+      <input type="hidden" name="back" value="{{.Here}}">
+      <button type="submit" name="to" value="auto"{{if not .Theme}} class="on" aria-current="true"{{end}}>{{template "icon-auto"}}System</button>
+      <button type="submit" name="to" value="light"{{if eq .Theme "light"}} class="on" aria-current="true"{{end}}>{{template "icon-light"}}Light</button>
+      <button type="submit" name="to" value="dark"{{if eq .Theme "dark"}} class="on" aria-current="true"{{end}}>{{template "icon-dark"}}Dark</button>
+    </form>
+    <hr>
+    <form method="post" action="/logout" data-sign-out>
+      <button type="submit">{{template "icon-sign-out"}}Sign out</button>
+    </form>
+  </div>
 {{end}}
 
 {{/* the tabs, and whatever narrows them, share one row so the band never

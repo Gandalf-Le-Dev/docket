@@ -19,13 +19,14 @@
 // script fetches the page's own URL again and swaps its #page like a boosted
 // link, holding off while a form is being filled in. It also runs the search
 // as it is typed, turns a clicked title into a field that posts the title
-// alone, keeps form drafts in the browser, and takes an action's report
-// (?did=...) out of the address bar once its toast shows. Without either
-// script every link and form still works as a page load.
+// alone, keeps form drafts in the browser until Sign out, and takes an
+// action's report (?did=...) out of the address bar once its toast shows.
+// Without either script every link and form still works as a page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
-// here. Auth is the review token, entered once per device and kept in a cookie.
+// here. Auth is the review token, entered once per device and kept in a cookie
+// until Sign out, in the header's theme menu, clears it.
 package web
 
 import (

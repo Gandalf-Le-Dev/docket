@@ -175,8 +175,9 @@
   // time so a database started afresh cannot hand it to another entry. Only
   // the fields typed into are kept: the rest show the entry as it is now, a
   // body an agent rewrote meanwhile, or the scope a "+ in" link started in.
-  // Storage can be missing or refuse (a private window, a full quota), and
-  // the forms then work as they would without drafts.
+  // Signing out deletes every draft, and none is kept after it. Storage can
+  // be missing or refuse (a private window, a full quota), and the forms then
+  // work as they would without drafts.
   const draftFields = ["title", "body", "scope"];
   const uploading = /!\[Uploading image \d+…\]\(\)\n?/g;
   // the server keeps an image no saved body shows for this long
@@ -196,7 +197,7 @@
       localStorage.removeItem(draftKey(form));
     } catch {}
   }
-  function pruneDrafts() {
+  function dropDrafts(before) {
     try {
       for (let i = localStorage.length - 1; i >= 0; i--) {
         const key = localStorage.key(i);
@@ -205,11 +206,23 @@
         try {
           at = JSON.parse(localStorage.getItem(key)).at;
         } catch {}
-        if (!(at > Date.now() - draftLife)) localStorage.removeItem(key);
+        if (!(at > before)) localStorage.removeItem(key);
       }
     } catch {}
   }
-  pruneDrafts();
+  dropDrafts(Date.now() - draftLife);
+  // Whoever uses this browser next must not find what was typed before.
+  let signedOut = false;
+  document.addEventListener(
+    "submit",
+    (e) => {
+      if (!(e.target instanceof HTMLFormElement) || !e.target.matches("[data-sign-out]")) return;
+      // an upload still running would save its form's draft when it lands
+      signedOut = true;
+      dropDrafts(Infinity);
+    },
+    true,
+  );
 
   // A draft remembers which version of the entry it started from (the base
   // an edit form posts, see web.go's update), so its note can say when the
@@ -224,7 +237,7 @@
     return orig ? orig.value.replace(/\r\n/g, "\n") : field.defaultValue;
   }
   function saveDraft(form) {
-    if (!form.dataset.draft) return;
+    if (!form.dataset.draft || signedOut) return;
     const typed = {};
     for (const name of draftFields) {
       const field = form.elements.namedItem(name);
