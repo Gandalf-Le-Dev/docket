@@ -39,7 +39,14 @@
     </form>
     {{else}}
     <div class="main">
-      <h1 class="display-m">{{.Item.Title}}</h1>
+      {{if eq .Do "drop"}}<h1 class="display-m">{{.Item.Title}}</h1>
+      {{else}}<form class="retitle" method="post" action="/todo/update">
+        <input type="hidden" name="id" value="{{.Item.ID}}">
+        <input type="hidden" name="back_id" value="{{.Item.ID}}">
+        <h1 class="display-m"><button type="button" data-retitle
+          aria-describedby="retitle-hint">{{.Item.Title}}</button></h1>
+        <span id="retitle-hint" hidden>Edit title</span>
+      </form>{{end}}
       {{if .Item.Verdict}}
         <p class="verdict" hx-boost="false"><b>{{if eq .Item.State "done"}}Done.{{else}}Dropped.{{end}}</b> {{body .Item.Verdict}}</p>
       {{end}}

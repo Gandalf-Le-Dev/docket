@@ -33,7 +33,15 @@
   {{else}}
   <div class="body">
     {{template "form-error" $s}}
-    <h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
+    {{if eq $s.Do "drop"}}<h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
+    {{else}}<form class="retitle" method="post" action="/todo/update">
+      <input type="hidden" name="id" value="{{$t.ID}}">
+      {{template "back" $s}}
+      <input type="hidden" name="back_open" value="{{$t.ID}}">
+      <h1 class="heading" style="margin: 0 0 var(--space-2)"><button type="button" data-retitle
+        aria-describedby="retitle-hint">{{$t.Title}}</button></h1>
+      <span id="retitle-hint" hidden>Edit title</span>
+    </form>{{end}}
     <dl class="facts">
       <dt>Filed</dt><dd><time datetime="{{$t.CreatedAt}}" data-ago title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</time></dd>
       {{if $t.Via}}<dt>By</dt><dd>{{$t.Via}}</dd>{{end}}

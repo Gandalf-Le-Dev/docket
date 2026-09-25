@@ -223,7 +223,8 @@ func TestItemPage(t *testing.T) {
 		t.Fatalf("item page: %d\n%s", resp.StatusCode, body)
 	}
 	for _, want := range []string{
-		`<h1 class="display-m">linkable</h1>`,
+		`aria-describedby="retitle-hint">linkable</button></h1>`,
+		`<span id="retitle-hint" hidden>Edit title</span>`,
 		`<a href="https://github.com/x/y/pull/7" rel="noopener">https://github.com/x/y/pull/7</a>,`,
 		`(<a href="https://example.com/a" rel="noopener">https://example.com/a</a>).`,
 		`<dt>From</dt><dd>test</dd>`, // the source, labeled
@@ -958,6 +959,29 @@ func TestFormsOpenInPlace(t *testing.T) {
 			}
 		}
 	}
+	// The title edits in place wherever the entry is read, posting nothing
+	// but its id and where to land; beside the drop form it stays a title.
+	retitle := regexp.MustCompile(`(?s)<form class="retitle" method="post" action="/todo/update">(.*?)</form>`)
+	for path, want := range map[string][]string{
+		"/?open=1":         {`name="id" value="1"`, `name="back_open" value="1"`, `data-retitle`},
+		"/todo/1":          {`name="id" value="1"`, `name="back_id" value="1"`, `data-retitle`},
+		"/?open=1&do=drop": nil,
+		"/todo/1?do=drop":  nil,
+	} {
+		m := retitle.FindStringSubmatch(get(path))
+		if (m == nil) != (want == nil) {
+			t.Fatalf("%s: title form %q", path, m)
+		}
+		for _, w := range want {
+			if !strings.Contains(m[1], w) {
+				t.Fatalf("%s title form missing %q:\n%s", path, w, m[1])
+			}
+		}
+		if m != nil && (strings.Contains(m[1], `name="body"`) || strings.Contains(m[1], `name="scope"`)) {
+			t.Fatalf("%s title form posts more than the title:\n%s", path, m[1])
+		}
+	}
+
 	// The scripts are fingerprinted like the stylesheet, so a deploy busts all
 	// three, and htmx is there before the script that listens for its events.
 	v := hashAsset(fingerprinted...)

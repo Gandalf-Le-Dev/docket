@@ -357,6 +357,17 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border: var(--hairline) solid var(--border); border-radius: var(--radius-lg); }
 .live-note:empty { display: none; }
 
+/* a title edits in place: its button reads as the heading it sits in, and
+   the textarea that replaces it takes the heading's type (app.js) with its
+   text where the heading's was */
+[data-retitle] { font: inherit; letter-spacing: inherit; color: inherit; text-align: inherit;
+  background: none; border: 0; padding: 0; margin: 0; cursor: text; }
+[data-retitle]:hover { text-decoration: underline dotted var(--border-strong); text-underline-offset: 0.2em; }
+.retitle textarea { display: block; height: auto; min-height: 0; resize: none; overflow: hidden;
+  field-sizing: content;
+  width: calc(100% + 2 * (var(--space-2) + var(--hairline)));
+  margin-left: calc(-1 * (var(--space-2) + var(--hairline))); padding: 0 var(--space-2); }
+
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
 .form textarea:has(+ .attach:not([hidden])) { margin-bottom: var(--space-2); }

@@ -93,7 +93,7 @@
 
   const sizesItself = window.CSS && CSS.supports("field-sizing", "content");
   function fit(ta) {
-    if (sizesItself || !ta.matches(".form textarea")) return;
+    if (sizesItself || !ta.matches(".form textarea, .retitle textarea")) return;
     // collapsing the field to measure it would scroll whatever holds it
     const scroller = ta.closest(".drawer .body") || document.scrollingElement;
     const top = scroller.scrollTop;
@@ -191,6 +191,86 @@
   setInterval(tick, 60e3);
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) tick();
+  });
+
+  // The title's button turns it into a field in place. Enter or leaving it
+  // saves the title alone (web.go's update keeps the body and scope as they
+  // are now); Escape, or saving it unchanged or empty, puts the title back,
+  // and focus returns to the button. A save the server refuses opens the
+  // field again with what was typed, beside the reason.
+  const maxTitle = 500; // store.MaxTitleBytes, counted in characters here
+  function retitle(button, typed) {
+    const heading = button.closest("h1");
+    const form = heading && heading.closest("form");
+    if (!form || heading.hidden) return;
+    const was = button.textContent.trim();
+    // a textarea, so a long title wraps as the heading did on a narrow screen
+    const field = document.createElement("textarea");
+    field.rows = 1;
+    field.name = "title";
+    field.required = true;
+    field.maxLength = maxTitle;
+    field.defaultValue = was;
+    field.value = typed ?? was;
+    field.setAttribute("aria-label", "Title");
+    const style = getComputedStyle(heading);
+    for (const p of ["fontFamily", "fontSize", "fontWeight", "lineHeight", "letterSpacing", "marginBottom"]) {
+      field.style[p] = style[p];
+    }
+    heading.hidden = true;
+    heading.after(field);
+    fit(field);
+    field.focus();
+    field.setSelectionRange(field.value.length, field.value.length);
+
+    let settled = false;
+    const cancel = () => {
+      settled = true;
+      field.remove();
+      heading.hidden = false;
+      button.focus();
+    };
+    const save = () => {
+      if (settled) return;
+      const title = field.value.replace(/\s*\n\s*/g, " ").trim();
+      if (!title || title === was) return cancel();
+      settled = true;
+      field.value = title;
+      form.addEventListener(
+        "htmx:afterRequest",
+        (ev) => {
+          // one that never reached the server can be tried again as it is
+          if (!ev.detail.successful) {
+            settled = false;
+            return;
+          }
+          const refused = new URL(ev.detail.xhr.responseURL).searchParams.has("err");
+          const again = document.querySelector("#page [data-retitle]");
+          if (!again) return;
+          if (refused) retitle(again, title);
+          else again.focus({ preventScroll: true });
+        },
+        { once: true },
+      );
+      form.requestSubmit();
+    };
+    field.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" && !ev.isComposing) {
+        ev.preventDefault();
+        save();
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        if (!settled) cancel();
+      }
+    });
+    // the window losing focus to another tab or app is not leaving the title
+    field.addEventListener("blur", () => {
+      if (document.activeElement !== field) save();
+    });
+  }
+  document.addEventListener("click", (e) => {
+    const button = e.target instanceof Element && e.target.closest("[data-retitle]");
+    if (button) retitle(button);
   });
 
   const liveHeader = "Docket-Live";
