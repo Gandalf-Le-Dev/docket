@@ -433,6 +433,8 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
     padding: var(--space-2) calc(var(--space-4) + var(--inset-r)) calc(var(--space-2) + var(--inset-b))
       calc(var(--space-4) + var(--inset-l));
     background: var(--surface-raised); border-top: var(--hairline) solid var(--border); }
+  /* keyed to forms whose buttons can sit at the foot, not to focus, which moves mid-click */
+  #page:has(form.form, form.drop, form.rename) .bar { display: none; }
   /* the backdrop under the list would take a tap between its controls */
   .has-drawer > .main .bar { pointer-events: auto; }
   .bar > [role="search"] { flex: 1; min-width: 0; }

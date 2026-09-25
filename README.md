@@ -225,7 +225,10 @@ once.
 
 The search field and New entry sit in the header. On a narrow screen, such as a
 phone, they move to a bar at the foot of the window, within reach of a thumb,
-and New entry shows as a +.
+and New entry shows as a +. While a new entry, an edit, a drop reason or a
+rename is open, the bar steps aside, so it never covers what you type or the
+form's buttons; it comes back when the form closes. A title fixed in place sits
+at the top and has no buttons, so the bar stays.
 
 Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope

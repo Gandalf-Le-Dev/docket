@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -241,6 +242,90 @@ func element(doc, start string) string {
 		}
 	}
 	return ""
+}
+
+// A narrow screen's bar steps aside while a form whose buttons can sit at
+// the foot is open, and the stylesheet knows one is open by its class alone
+// (app.css), not by focus, which moves in the middle of a click on the
+// form's Save. A page with no such form carries none of those classes, so
+// its bar shows. The title editor is left out: it sits at the top, has no
+// buttons, and closes on the blur a press elsewhere starts with, which
+// would bring the bar back under that press.
+func TestOpenFormsHideTheBar(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("an entry", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	hides := barHiders(t)
+	for _, h := range hides {
+		if strings.Contains(h, "retitle") {
+			t.Fatalf("app.css hides the bar for the title editor: %s", h)
+		}
+	}
+	marker := regexp.MustCompile(`<form\b[^>]*\bclass="(?:[^"]*\s)?(form|drop|rename)(?:\s[^"]*)?"`)
+	for path, open := range map[string]string{
+		"/?open=1&do=edit": "form",
+		"/todo/1?do=edit":  "form",
+		"/?new=1":          "form",
+		"/?open=1&do=drop": "drop",
+		"/todo/1?do=drop":  "drop",
+		"/?rename=pilot":   "rename",
+		"/":                "",
+		"/?open=1":         "",
+		"/todo/1":          "",
+		"/?q=an":           "",
+	} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := marker.FindAllStringSubmatch(readAll(t, resp), -1)
+		if open == "" {
+			if m != nil {
+				t.Fatalf("%s has no form open but is marked %q, which hides the bar", path, m[0][1])
+			}
+			continue
+		}
+		if len(m) != 1 || m[0][1] != open {
+			t.Fatalf("%s: forms marked %q, want one form.%s", path, m, open)
+		}
+		if !slices.Contains(hides, "form."+open) {
+			t.Fatalf("app.css hides the bar for %q, not for form.%s", hides, open)
+		}
+	}
+}
+
+// barHiders returns the selectors inside #page:has(...) of the app.css rules
+// that set .bar to display: none, whatever their spacing or line breaks.
+func barHiders(t *testing.T) []string {
+	t.Helper()
+	css, err := staticFS.ReadFile("static/app.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src := regexp.MustCompile(`(?s)/\*.*?\*/`).ReplaceAllString(string(css), "")
+	space := regexp.MustCompile(`\s+`)
+	hider := regexp.MustCompile(`^#page:has\((.*)\) \.bar$`)
+	var found []string
+	for _, rule := range regexp.MustCompile(`([^{}]+)\{([^{}]*)\}`).FindAllStringSubmatch(src, -1) {
+		body := space.ReplaceAllString(rule[2], "")
+		if !strings.Contains(body, "display:none") {
+			continue
+		}
+		m := hider.FindStringSubmatch(strings.TrimSpace(space.ReplaceAllString(rule[1], " ")))
+		if m == nil {
+			continue
+		}
+		for _, sel := range strings.Split(m[1], ",") {
+			found = append(found, strings.TrimSpace(sel))
+		}
+	}
+	if found == nil {
+		t.Fatal("app.css has no rule that hides the bar")
+	}
+	return found
 }
 
 func TestPublishTokenRejected(t *testing.T) {
