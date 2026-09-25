@@ -25,7 +25,8 @@
     <input type="text" id="d-title" name="title" value="{{$s.Edit.Field "title" $t.Title}}" required autofocus>
     {{template "now" $s.Edit.Now "title"}}
     <label for="d-body">Body</label>
-    <textarea id="d-body" name="body" rows="12">{{$s.Edit.Field "body" $t.Body}}</textarea>
+    {{/* the parser drops a newline that opens a textarea: this one, never the body's own */}}
+    <textarea id="d-body" name="body" rows="12">{{"\n"}}{{$s.Edit.Field "body" $t.Body}}</textarea>
     {{template "attach" "d-body"}}
     {{template "now" $s.Edit.Now "body"}}
     <label for="d-scope">Scope</label>

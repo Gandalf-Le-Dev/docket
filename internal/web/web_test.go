@@ -842,7 +842,7 @@ func TestUpdateRefusedWhenStale(t *testing.T) {
 		for _, want := range []string{
 			"#1 changed while you were editing it",
 			`name="title" value="mine"`,
-			">my body</textarea>",
+			">\nmy body</textarea>",
 			`name="base" value="` + now.Rev() + `"`,
 			`name="orig_body" value="the agent&#39;s body"`,
 			`<span>Now on the server:</span> the agent&#39;s body`,
@@ -868,7 +868,7 @@ func TestUpdateRefusedWhenStale(t *testing.T) {
 	// the one they changed keeps theirs, with none.
 	_, body := post(form("mine", opened.Body, opened.Scope, "back_open", "1"), false)
 	title := body[strings.Index(body, `name="title"`):strings.Index(body, `name="body"`)]
-	if !strings.Contains(body, ">the agent&#39;s body</textarea>") || strings.Contains(title, "Now on the server:") ||
+	if !strings.Contains(body, ">\nthe agent&#39;s body</textarea>") || strings.Contains(title, "Now on the server:") ||
 		strings.Count(body, "Now on the server:") != 1 {
 		t.Fatalf("user-only title change over an agent's body:\n%s", body)
 	}
@@ -892,7 +892,7 @@ func TestUpdateRefusedWhenStale(t *testing.T) {
 	// It does not survive a change to the title, and comes back as the edit
 	// form with the title typed and the body as the entry has it.
 	_, body = post(url.Values{"id": {"1"}, "base_title": {opened.TitleRev()}, "title": {"mine again"}, "back_id": {"1"}}, false)
-	for _, want := range []string{`name="title" value="mine again"`, `<span>Now on the server:</span> renamed`, ">the agent&#39;s body</textarea>"} {
+	for _, want := range []string{`name="title" value="mine again"`, `<span>Now on the server:</span> renamed`, ">\nthe agent&#39;s body</textarea>"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("stale title save lacks %q:\n%s", want, body)
 		}
@@ -904,6 +904,56 @@ func TestUpdateRefusedWhenStale(t *testing.T) {
 	}
 	if got, _ := s.GetTodo(id); got.Title != "mine" || got.Body != "my body" {
 		t.Fatalf("current save: %+v", got)
+	}
+}
+
+// The HTML parser drops a newline that opens a textarea's content. A body
+// that starts with one must still read, in both edit forms, as exactly what
+// orig_body holds, and an unchanged save must store it byte for byte.
+func TestBodyLeadingNewlineSurvivesEdit(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	const text = "\nstarts with a blank line\n\n  and keeps its indent\n"
+	id, _, _ := s.AddTodo("newline", text, "pilot", "test", "t")
+	textarea := regexp.MustCompile(`(?s)<textarea id="[de]-body" name="body" rows="\d+">(.*?)</textarea>`)
+	hidden := func(page, name string) string {
+		t.Helper()
+		m := regexp.MustCompile(`name="` + name + `" value="([^"]*)"`).FindStringSubmatch(page)
+		if m == nil {
+			t.Fatalf("no %s in:\n%s", name, page)
+		}
+		return html.UnescapeString(m[1])
+	}
+	for _, path := range []string{"/?open=1&do=edit", "/todo/1?do=edit"} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := readAll(t, resp)
+		m := textarea.FindStringSubmatch(page)
+		if m == nil {
+			t.Fatalf("%s has no body field:\n%s", path, page)
+		}
+		shown := html.UnescapeString(strings.TrimPrefix(m[1], "\n"))
+		if shown != text || hidden(page, "orig_body") != text {
+			t.Fatalf("%s: field reads %q, orig_body %q, want %q", path, shown, hidden(page, "orig_body"), text)
+		}
+		resp, err = c.PostForm(srv.URL+"/todo/update", url.Values{
+			"id": {"1"}, "base": {hidden(page, "base")},
+			"title": {hidden(page, "orig_title")}, "body": {shown}, "scope": {hidden(page, "orig_scope")},
+			"orig_title": {hidden(page, "orig_title")}, "orig_body": {hidden(page, "orig_body")},
+			"orig_scope": {hidden(page, "orig_scope")}, "back_id": {"1"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if body := readAll(t, resp); !strings.Contains(body, "Saved #1.") {
+			t.Fatalf("%s: unchanged save not saved:\n%s", path, body)
+		}
+		if got, _ := s.GetTodo(id); got.Body != text {
+			t.Fatalf("%s: saved body %q, want %q", path, got.Body, text)
+		}
 	}
 }
 

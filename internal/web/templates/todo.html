@@ -32,7 +32,8 @@
       <input type="text" id="e-title" name="title" value="{{.Edit.Field "title" .Item.Title}}" required autofocus>
       {{template "now" .Edit.Now "title"}}
       <label for="e-body">Body</label>
-      <textarea id="e-body" name="body" rows="14">{{.Edit.Field "body" .Item.Body}}</textarea>
+      {{/* the parser drops a newline that opens a textarea: this one, never the body's own */}}
+      <textarea id="e-body" name="body" rows="14">{{"\n"}}{{.Edit.Field "body" .Item.Body}}</textarea>
       {{template "attach" "e-body"}}
       {{template "now" .Edit.Now "body"}}
       <label for="e-scope">Scope</label>
