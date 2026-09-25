@@ -1,7 +1,9 @@
 {{/* No history cache: back refetches, so it shows the backlog as it is now
      and no copy of it is left in the browser's storage. */}}
 {{define "head"}}<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{{/* resizes-content: Android Chrome lays the page out above its keyboard, so
+     the bottom bar and what a search finds stay in view; iOS ignores it */ -}}
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="htmx-config" content='{"historyCacheSize":0,"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'>
 <link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
 <script src="/static/htmx.min.js?v={{.Asset}}" defer></script>
