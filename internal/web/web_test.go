@@ -945,10 +945,10 @@ func TestFormsOpenInPlace(t *testing.T) {
 		return readAll(t, resp)
 	}
 	for path, wants := range map[string][]string{
-		"/?new=1&in=pilot": {`aria-label="New entry"`, `action="/add"`, `name="scope" list="scopes" value="pilot"`, `class="attach" data-for="n-body"`},
-		"/?open=1&do=edit": {`id="drawer-edit"`, `name="back_open" value="1"`, `form="drawer-edit"`, `class="attach" data-for="d-body"`},
+		"/?new=1&in=pilot": {`aria-label="New entry"`, `action="/add"`, `name="scope" list="scopes" value="pilot"`, `class="attach" data-for="n-body"`, `data-draft="new"`},
+		"/?open=1&do=edit": {`id="drawer-edit"`, `name="back_open" value="1"`, `form="drawer-edit"`, `class="attach" data-for="d-body"`, `data-draft="edit-1-20`},
 		"/?open=1&do=drop": {`name="outcome" value="dropped"`, `placeholder="Why not? Kept in the Dropped tab"`},
-		"/todo/1?do=edit":  {`action="/todo/update"`, `id="e-title" name="title" value="first"`, `class="attach" data-for="e-body"`},
+		"/todo/1?do=edit":  {`action="/todo/update"`, `id="e-title" name="title" value="first"`, `class="attach" data-for="e-body"`, `data-draft="edit-1-20`},
 		"/todo/1?do=drop":  {`name="outcome" value="dropped"`, `name="back_id" value="1"`},
 		"/?rename=pilot":   {`action="/scope/rename"`, `name="from" value="pilot"`, `class="name-input"`},
 	} {

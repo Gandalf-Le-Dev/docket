@@ -12,7 +12,8 @@
   </header>
 
   {{if eq $s.Do "edit"}}
-  <form id="drawer-edit" class="body form" method="post" action="/todo/update">
+  <form id="drawer-edit" class="body form" method="post" action="/todo/update"
+        data-draft="edit-{{$t.ID}}-{{$t.CreatedAt}}" data-updated="{{$t.UpdatedAt}}">
     <input type="hidden" name="id" value="{{$t.ID}}">
     {{template "back" $s}}
     <input type="hidden" name="back_open" value="{{$t.ID}}">
@@ -92,7 +93,7 @@
     <span class="ui">New entry</span>
     <a class="icon close" href="{{query "state" .State "scope" .Scope "q" .Query}}" aria-label="Close">✕</a>
   </header>
-  <form id="drawer-new" class="body form" method="post" action="/add">
+  <form id="drawer-new" class="body form" method="post" action="/add" data-draft="new">
     {{template "back" .}}
     <input type="hidden" name="back_new" value="1">
     {{template "form-error" .}}

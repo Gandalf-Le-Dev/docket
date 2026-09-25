@@ -21,7 +21,8 @@
 
   <article class="doc">
     {{if eq .Do "edit"}}
-    <form class="main form" method="post" action="/todo/update">
+    <form class="main form" method="post" action="/todo/update"
+          data-draft="edit-{{.Item.ID}}-{{.Item.CreatedAt}}" data-updated="{{.Item.UpdatedAt}}">
       <input type="hidden" name="id" value="{{.Item.ID}}">
       <input type="hidden" name="back_id" value="{{.Item.ID}}">
       <input type="hidden" name="back_do" value="edit">

@@ -376,6 +376,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .form textarea { field-sizing: content; min-height: 176px; max-height: 60vh; }
 .attach { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .attach[hidden] { display: none; }
+.draft-note { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: 0 0 var(--space-4); font-size: 13px; line-height: 20px; color: var(--ink-muted); }
 .attach .upload-status { font-size: 12px; line-height: 16px; color: var(--danger); }
 textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2px; }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center;

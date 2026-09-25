@@ -80,7 +80,10 @@
         })
         .finally(() => {
           fit(ta);
-          if (form) setBusy(form, -1);
+          if (form) {
+            setBusy(form, -1);
+            saveDraft(form);
+          }
         });
     }
   }
@@ -161,6 +164,128 @@
     }
     field.ta.focus();
     upload(field.ta, field.status, files);
+  });
+
+  // What is typed into the new-entry form or an entry's edit form is kept in
+  // this browser as it is typed, and comes back when that form opens again:
+  // after the drawer was closed, a reload, a failed save. The drawer and the
+  // entry's page share an entry's draft, named by the entry's id and filing
+  // time so a database started afresh cannot hand it to another entry. Only
+  // the fields typed into are kept: the rest show the entry as it is now, a
+  // body an agent rewrote meanwhile, or the scope a "+ in" link started in.
+  // Storage can be missing or refuse (a private window, a full quota), and
+  // the forms then work as they would without drafts.
+  const draftFields = ["title", "body", "scope"];
+  const uploading = /!\[Uploading image \d+…\]\(\)\n?/g;
+  // the server keeps an image no saved body shows for this long
+  // (cmd/docket's imageGrace), so an older draft's images may be gone
+  const draftLife = 7 * 86400e3;
+  const draftKey = (form) => `docket.draft.${form.dataset.draft}`;
+  function readDraft(form) {
+    try {
+      const draft = JSON.parse(localStorage.getItem(draftKey(form)));
+      return draft && typeof draft.fields === "object" ? draft : null;
+    } catch {
+      return null;
+    }
+  }
+  function dropDraft(form) {
+    try {
+      localStorage.removeItem(draftKey(form));
+    } catch {}
+  }
+  function pruneDrafts() {
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (!key || !key.startsWith("docket.draft.")) continue;
+        let at = 0;
+        try {
+          at = JSON.parse(localStorage.getItem(key)).at;
+        } catch {}
+        if (!(at > Date.now() - draftLife)) localStorage.removeItem(key);
+      }
+    } catch {}
+  }
+  pruneDrafts();
+
+  // A draft remembers which version of the entry it started from, so its
+  // note can say when the entry has changed since.
+  function saveDraft(form) {
+    if (!form.dataset.draft) return;
+    const typed = {};
+    for (const name of draftFields) {
+      const field = form.elements.namedItem(name);
+      const value = field && field.value.replace(uploading, "");
+      if (field && value !== field.defaultValue) typed[name] = value;
+    }
+    if (!Object.keys(typed).length) return dropDraft(form);
+    const base = readDraft(form)?.base ?? form.dataset.updated ?? "";
+    try {
+      // when typing began: no image uploaded into it is older, so it goes first
+      const at = readDraft(form)?.at ?? Date.now();
+      localStorage.setItem(draftKey(form), JSON.stringify({ fields: typed, base, at }));
+    } catch {}
+  }
+
+  function restoreDraft(form) {
+    const draft = readDraft(form);
+    // htmx's first load event covers the page this script already did
+    if (!draft || form.querySelector(".draft-note")) return;
+    let restored = false;
+    for (const name of draftFields) {
+      const field = form.elements.namedItem(name);
+      const value = draft.fields[name];
+      if (!field || typeof value !== "string" || value === field.defaultValue) continue;
+      field.value = value;
+      if (field instanceof HTMLTextAreaElement) fit(field);
+      restored = true;
+    }
+    if (!restored) return dropDraft(form);
+    const changed = form.dataset.updated && draft.base && draft.base !== form.dataset.updated;
+    const text = document.createElement("span");
+    const discard = document.createElement("button");
+    discard.type = "button";
+    discard.className = "btn--quiet";
+    discard.textContent = "Discard";
+    discard.addEventListener("click", () => {
+      dropDraft(form);
+      for (const name of draftFields) {
+        const field = form.elements.namedItem(name);
+        if (!field) continue;
+        field.value = field.defaultValue;
+        if (field instanceof HTMLTextAreaElement) fit(field);
+      }
+      note.remove();
+    });
+    const note = document.createElement("p");
+    note.className = "draft-note";
+    note.setAttribute("role", "status");
+    note.append(text, discard);
+    (form.querySelector("label") || form.firstChild)?.before(note);
+    // a status region speaks what changes in it, not what it was born with
+    setTimeout(() => {
+      text.textContent = changed ? "Draft restored. The entry has changed since you started it." : "Draft restored.";
+    });
+  }
+  function restoreDrafts(root) {
+    for (const form of root.querySelectorAll("form[data-draft]")) restoreDraft(form);
+  }
+  restoreDrafts(document);
+  document.addEventListener("htmx:load", (e) => restoreDrafts(e.target));
+  document.addEventListener("input", (e) => {
+    const form = e.target.form;
+    if (form && draftFields.includes(e.target.name)) saveDraft(form);
+  });
+  // Only an answer that reports the save (web.go's did) drops the draft: a
+  // failed save, Cancel and a closed drawer keep it. The form is named by the
+  // request: the swap has taken it out, so the event's elt is the body.
+  document.addEventListener("htmx:afterRequest", (e) => {
+    const { requestConfig, successful, xhr } = e.detail;
+    const form = requestConfig && requestConfig.elt;
+    if (!(form instanceof HTMLFormElement) || !form.dataset.draft || !successful) return;
+    const did = new URL(xhr.responseURL).searchParams.get("did");
+    if (did === "saved" || did === "added") dropDraft(form);
   });
 
   // A port of agoAt in web.go, rule for rule, so a page left open keeps its
