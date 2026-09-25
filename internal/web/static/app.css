@@ -145,7 +145,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .hdr { --lockup: 46px; display: flex; align-items: center; gap: var(--space-3);
   padding: var(--space-5) calc(var(--space-5) + var(--inset-r)) var(--space-4) calc(var(--space-5) + var(--inset-l)); }
 .wm { font-size: var(--lockup); font-weight: 600; letter-spacing: -0.03em; line-height: 1;
-  color: var(--ink); text-decoration: none; }
+  color: var(--ink); text-decoration: none; flex: none; white-space: nowrap; }
 /* The glyph fills 40 of its 48 units, so a box of 0.66em draws it at about
    the x-height; the drop puts the glyph's foot, not its box's, on the baseline. */
 .wm .o { display: inline-block; width: 0.66em; height: 0.66em; margin: 0 0.02em;
@@ -161,14 +161,29 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   0%, 100% { transform: scaleY(1); }
   40%, 55% { transform: scaleY(0.08); }
 }
+/* beside a drawer the header has only the list's width: the search gives way first */
+.hdr .right, .hdr .bar { min-width: 0; }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
 .hdr .bar { display: flex; gap: var(--space-2); align-items: center; }
-.hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
+.bar > [role="search"] { width: 260px; min-width: 0; }
+.hdr input[type="search"] { width: 100%; font-size: 13px; font-weight: 500; }
 .new svg { display: none; }
-.theme-pick { width: var(--control-height); height: var(--control-height); anchor-name: --theme; }
+.theme-pick { width: var(--control-height); height: var(--control-height); flex: none; anchor-name: --theme; }
+.new { flex: none; }
 /* the brand's icon spec: Lucide, 20px, 1.5px stroke, square caps and joins */
 .theme-pick svg, .menu svg, .new svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5;
   stroke-linecap: square; stroke-linejoin: miter; flex: none; }
+/* above the phone layout only, so the bar fixed to a phone's foot is never
+   inside a contained box */
+@media (width > 860px) { .hdr { container-type: inline-size; } }
+/* below this the search would cut its own placeholder short: New entry
+   gives up its words for the + the phone's bar shows */
+@container (width < 484px) {
+  .bar .new { width: var(--control-height); padding: 0; }
+  .new svg { display: block; }
+  .new .words { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap; }
+}
 .theme-pick:has(+ .menu:popover-open) { background: var(--surface-sunken); color: var(--ink); }
 .menu { min-width: 180px; padding: var(--space-2); border: var(--hairline) solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow-overlay);
@@ -425,7 +440,6 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
       calc(var(--space-5) + var(--inset-l)); }
   .hdr { --lockup: 32px; gap: var(--space-2);
     padding: var(--space-4) calc(var(--space-4) + var(--inset-r)) var(--space-4) calc(var(--space-4) + var(--inset-l)); }
-  .wm { white-space: nowrap; }
   /* at the foot, in the thumb's reach; the page's end and focus keep clear of it */
   html { --bar-room: calc(var(--control-height) + 2 * var(--space-2) + var(--hairline) + var(--inset-b));
     scroll-padding-bottom: var(--bar-room); }
