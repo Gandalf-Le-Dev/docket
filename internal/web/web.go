@@ -810,13 +810,25 @@ func (h *Handler) undo(w http.ResponseWriter, r *http.Request) {
 	back(w, r, err, d)
 }
 
+// update changes only the fields the form posts. The title edited in place
+// posts a title alone, and must leave the body and scope as they are now,
+// not as the page last saw them: an agent may have changed them since.
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
 	if err == nil {
-		title, body, scope := r.FormValue("title"), r.FormValue("body"), r.FormValue("scope")
-		_, err = h.store.UpdateTodo(id, store.TodoUpdate{Title: &title, Body: &body, Scope: &scope})
+		_, err = h.store.UpdateTodo(id, store.TodoUpdate{
+			Title: posted(r, "title"), Body: posted(r, "body"), Scope: posted(r, "scope"),
+		})
 	}
 	back(w, r, err, did("saved", id))
+}
+
+// posted is a form field's value, or nil when the form has no such field.
+func posted(r *http.Request, key string) *string {
+	if vs, ok := r.PostForm[key]; ok && len(vs) > 0 {
+		return &vs[0]
+	}
+	return nil
 }
 
 func (h *Handler) renameScope(w http.ResponseWriter, r *http.Request) {

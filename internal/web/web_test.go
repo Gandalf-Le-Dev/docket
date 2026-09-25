@@ -422,14 +422,14 @@ func TestCrossOriginPostsRefused(t *testing.T) {
 		{"Sec-Fetch-Site": {"cross-site"}},
 		{"Origin": {"https://sibling.example"}},
 	} {
-		for _, path := range []string{"/todo/close", "/add", "/logout", "/login", "/theme", "/image"} {
+		for _, path := range []string{"/todo/close", "/todo/update", "/add", "/logout", "/login", "/theme", "/image"} {
 			if resp := post(path, header); resp.StatusCode != http.StatusForbidden {
 				t.Fatalf("%v post to %s: %d", header, path, resp.StatusCode)
 			}
 		}
 	}
-	if got, _ := s.GetTodo(id); got.State != "open" {
-		t.Fatalf("cross-origin close went through: %+v", got)
+	if got, _ := s.GetTodo(id); got.State != "open" || got.Title != "keep me open" {
+		t.Fatalf("cross-origin close or update went through: %+v", got)
 	}
 	if todos, _ := s.ListTodos("all", "", ""); len(todos) != 1 {
 		t.Fatalf("cross-origin add went through: %+v", todos)
@@ -730,6 +730,48 @@ func TestReportLeavesTheURL(t *testing.T) {
 		if want.toast != "" && !strings.Contains(body, want.toast) {
 			t.Errorf("%s lost its toast %q", path, want.toast)
 		}
+	}
+}
+
+// Saving changes only the fields the form posts: the title edited in place
+// posts a title alone, and an agent's body and scope written since the page
+// loaded survive it. A field posted empty is still saved empty.
+func TestUpdateOnlyWhatIsPosted(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("old title", "the page's body", "pilot", "test", "t")
+	agentBody, agentScope := "an agent's body", "fleet"
+	if _, err := s.UpdateTodo(id, store.TodoUpdate{Body: &agentBody, Scope: &agentScope}); err != nil {
+		t.Fatal(err)
+	}
+	post := func(form url.Values) (*http.Response, string) {
+		t.Helper()
+		resp, err := c.PostForm(srv.URL+"/todo/update", form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, readAll(t, resp)
+	}
+
+	resp, body := post(url.Values{"id": {"1"}, "title": {"  new title "}, "back_open": {"1"}})
+	got, _ := s.GetTodo(id)
+	if got.Title != "new title" || got.Body != agentBody || got.Scope != agentScope {
+		t.Fatalf("title-only save touched more than the title: %+v", got)
+	}
+	if resp.Request.URL.Query().Get("open") != "1" || !strings.Contains(body, "Saved #1.") {
+		t.Fatalf("title-only save landed on %s", resp.Request.URL)
+	}
+
+	// The title is checked as in the full form, and a refusal changes nothing.
+	_, body = post(url.Values{"id": {"1"}, "title": {" "}, "back_open": {"1"}})
+	if after, _ := s.GetTodo(id); after != got || !strings.Contains(body, "title must not be empty") {
+		t.Fatalf("empty title: %+v\n%s", after, body)
+	}
+
+	post(url.Values{"id": {"1"}, "title": {"new title"}, "body": {""}, "scope": {""}})
+	if got, _ := s.GetTodo(id); got.Body != "" || got.Scope != "" {
+		t.Fatalf("fields posted empty were not saved empty: %+v", got)
 	}
 }
 
