@@ -698,6 +698,41 @@ func TestUndoFromToast(t *testing.T) {
 	}
 }
 
+// A page reached through an action's report names itself without it, in
+// data-here for app.js to put in the address bar and in the view switches'
+// return path, while the toast still shows once. A page with no report keeps
+// its URL exactly as requested.
+func TestReportLeavesTheURL(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("reported", "", "pilot", "test", "t")
+	if _, _, err := s.CloseTodo(id, "done", ""); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]struct{ here, toast string }{
+		"/?did=closed&id=1&outcome=done&undo=1&state=done&scope=pilot": {"/?scope=pilot&state=done", "<span>Done.</span>"},
+		"/?did=added&id=1&duplicate=true&open=1":                       {"/?open=1", "Already open as #1."},
+		"/?open=1&do=edit&err=title+must+not+be+empty":                 {"/?do=edit&open=1", ""},
+		"/todo/1?did=saved&id=1":                                       {"/todo/1", "Saved #1."},
+		"/?did=renamed":                                                {"/", "Scope renamed."},
+		"/?state=done&scope=pilot":                                     {"/?state=done&scope=pilot", ""},
+	} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := readAll(t, resp)
+		esc := html.EscapeString(want.here)
+		if !strings.Contains(body, `data-here="`+esc+`"`) || !strings.Contains(body, `name="back" value="`+esc+`"`) {
+			t.Errorf("%s does not name itself %s:\n%s", path, want.here, body)
+		}
+		if want.toast != "" && !strings.Contains(body, want.toast) {
+			t.Errorf("%s lost its toast %q", path, want.toast)
+		}
+	}
+}
+
 func TestSplitVerdict(t *testing.T) {
 	cases := []struct{ body, text, outcome, reason string }{
 		{"", "", "", ""},

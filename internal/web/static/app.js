@@ -233,6 +233,20 @@
     if (page && page.dataset.asset !== asset) location.reload();
   });
 
+  // A page arrives at a URL that reports what an action did (?did=closed and
+  // the like), and names the view itself in data-here (web.go's here). The
+  // toast is on screen by then, so the report leaves the address bar: a
+  // reload, a bookmark or the theme switch must not show it again.
+  function tidyURL() {
+    const here = document.getElementById("page")?.dataset.here;
+    if (here && here !== location.pathname + location.search) {
+      history.replaceState(history.state, "", here + location.hash);
+    }
+  }
+  tidyURL();
+  document.addEventListener("htmx:afterSwap", tidyURL);
+  document.addEventListener("htmx:historyRestore", tidyURL);
+
   // Capture, and stop there: htmx submits a boosted form from its own
   // listener on the form, which never checks whether the event was cancelled.
   document.addEventListener(
@@ -459,9 +473,8 @@
         location.reload();
         return;
       }
-      // Only #page goes in: the toast a URL like ?did=closed carries was
-      // shown when it happened, and autofocus would pull focus into a form
-      // no one is using.
+      // Only #page goes in: a toast in the answer was shown when its action
+      // happened, and autofocus would pull focus into a form no one is using.
       for (const el of page.querySelectorAll("[autofocus]")) el.removeAttribute("autofocus");
       const title = doc.querySelector("title");
       d.serverResponse = (title ? title.outerHTML : "") + page.outerHTML;

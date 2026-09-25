@@ -369,7 +369,7 @@ type chrome struct {
 	Error   string
 	Asset   string // stylesheet and scripts fingerprint
 	Seq     string // store.Seq as of this render, for the live refresh
-	Here    string // this page's URL, for the view switches to return to
+	Here    string // this page's URL less its report (see here), for the view switches to return to
 	List    bool   // a list, so the density switch applies
 	Compact bool
 	Theme   string            // data-theme, or "" to follow the OS
@@ -621,7 +621,7 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			Error:   q.Get("err"),
 			Asset:   h.assetVer,
 			Seq:     seq,
-			Here:    r.URL.RequestURI(),
+			Here:    here(r),
 			List:    true,
 			Compact: cookie(r, densityCookie) == "compact",
 			Theme:   theme(r),
@@ -704,7 +704,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
 			Seq:    seq,
-			Here:   r.URL.RequestURI(),
+			Here:   here(r),
 			Theme:  theme(r),
 			Wink:   winks(),
 		},
@@ -932,6 +932,29 @@ func pref(name string, allowed ...string) http.HandlerFunc {
 		}
 		http.Redirect(w, r, dest, http.StatusSeeOther)
 	}
+}
+
+// reportKeys are the query keys through which back reports what an action
+// did, for flashFrom, or why it failed. They describe a moment, not a view.
+var reportKeys = []string{"did", "id", "outcome", "undo", "duplicate", "err"}
+
+// here is the URL a page stands for: the request's, without reportKeys.
+// app.js puts it in the address bar once the page shows, so a reload, a
+// bookmark or a view switch never repeats an old toast or error.
+func here(r *http.Request) string {
+	q := r.URL.Query()
+	reported := false
+	for _, k := range reportKeys {
+		reported = reported || q.Has(k)
+		q.Del(k)
+	}
+	switch {
+	case !reported:
+		return r.URL.RequestURI()
+	case len(q) == 0:
+		return r.URL.EscapedPath()
+	}
+	return r.URL.EscapedPath() + "?" + q.Encode()
 }
 
 // did describes a completed action for back: what happened, to which item,
