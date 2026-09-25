@@ -19,9 +19,10 @@
 // script fetches the page's own URL again and swaps its #page like a boosted
 // link, holding off while a form is being filled in. It also runs the search
 // as it is typed, turns a clicked title into a field that posts the title
-// alone, keeps form drafts in the browser until Sign out, and takes an
-// action's report (?did=...) out of the address bar once its toast shows.
-// Without either script every link and form still works as a page load.
+// alone, keeps form drafts in the browser until Sign out, changes the theme
+// without a reload, and takes an action's report (?did=...) out of the
+// address bar once its toast shows. Without either script every link and
+// form still works as a page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented

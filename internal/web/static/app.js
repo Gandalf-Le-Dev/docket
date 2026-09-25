@@ -2,11 +2,11 @@
 // the text as the marker the server draws; a swap that leaves what it
 // brought out of sight scrolls to it; ages like "3h ago" keep counting; the
 // search runs as it is typed; a title edits in place; the forms keep drafts;
-// an action's report leaves the address bar once shown; and a page
-// refreshes itself when an item changes anywhere (see live). Bodies
-// arrive with htmx swaps as well as with the page, so every listener sits on
-// the document and finds its field when the event comes, rather than
-// binding to fields once at load.
+// the theme changes without a reload; an action's report leaves the address
+// bar once shown; and a page refreshes itself when an item changes anywhere
+// (see live). Bodies arrive with htmx swaps as well as with the page, so
+// every listener sits on the document and finds its field when the event
+// comes, rather than binding to fields once at load.
 (() => {
   "use strict";
 
@@ -312,6 +312,64 @@
     if (!(form instanceof HTMLFormElement) || !form.dataset.draft || !successful) return;
     const did = new URL(xhr.responseURL).searchParams.get("did");
     if (did === "saved" || did === "added") dropDraft(form);
+  });
+
+  // The theme lives on <html>, which no swap replaces, so its form, left to
+  // itself, reloads the page. Here the choice is posted in place and drawn
+  // at once; the cookie the post sets still decides every page after, and a
+  // post that fails is sent again as the form would send it. Posts go one at
+  // a time, so the last pick is the one the server keeps, and each is drawn
+  // on the menu the page shows by then: a live refresh may have replaced it.
+  const themeForm = () => document.querySelector("#page form[data-pick-theme]");
+  function applyTheme(to) {
+    const root = document.documentElement;
+    if (to === "light" || to === "dark") root.dataset.theme = to;
+    else delete root.dataset.theme;
+    const form = themeForm();
+    if (!form) return;
+    let choice = null;
+    for (const b of form.querySelectorAll("button[name=to]")) {
+      const on = b.value === to;
+      b.classList.toggle("on", on);
+      if (on) b.setAttribute("aria-current", "true");
+      else b.removeAttribute("aria-current");
+      if (on) choice = b;
+    }
+    const menu = form.closest("[popover]");
+    const pick = menu && document.querySelector(`[popovertarget="${menu.id}"]`);
+    const icon = choice && choice.querySelector("svg");
+    if (pick && icon) {
+      pick.replaceChildren(icon.cloneNode(true));
+      pick.setAttribute("aria-label", `Theme: ${choice.textContent.trim()}`);
+    }
+    if (menu && menu.matches(":popover-open")) menu.hidePopover();
+  }
+  let themePosts = Promise.resolve();
+  let themePick = 0;
+  document.addEventListener("submit", (e) => {
+    const form = e.target;
+    const choice = e.submitter;
+    if (!(form instanceof HTMLFormElement) || !form.matches("[data-pick-theme]") || form.dataset.native) return;
+    if (!(choice instanceof HTMLButtonElement) || choice.name !== "to") return;
+    e.preventDefault();
+    const to = choice.value;
+    const pick = ++themePick;
+    const body = new URLSearchParams(new FormData(form));
+    body.set("to", to);
+    themePosts = themePosts
+      .then(() => fetch(form.action, { method: "POST", body, redirect: "manual" }))
+      .then((res) => {
+        if (res.type !== "opaqueredirect") throw new Error(`theme not saved (${res.status})`);
+        if (pick === themePick) applyTheme(to);
+      })
+      .catch(() => {
+        const now = themeForm();
+        const button = now && now.querySelector(`button[name=to][value="${CSS.escape(to)}"]`);
+        if (pick !== themePick || !button) return;
+        now.dataset.native = "1";
+        now.requestSubmit(button);
+        delete now.dataset.native;
+      });
   });
 
   // A port of agoAt in web.go, rule for rule, so a page left open keeps its

@@ -48,16 +48,16 @@
 {{define "icon-sign-out"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>{{end}}
 
 {{/* a popover closes on a click outside or Escape without any script; the
-     theme lives on <html>, outside what a swap replaces, so it reloads.
-     Sign out shares the menu: a narrow header has no room for another
-     button. */}}
+     theme lives on <html>, outside what a swap replaces, so without script
+     it reloads (app.js applies it in place). Sign out shares the menu: a
+     narrow header has no room for another button. */}}
 {{define "theme"}}
   <button type="button" class="icon theme-pick" popovertarget="theme-menu" title="Theme, sign out"
     aria-label="Theme: {{if eq .Theme "light"}}Light{{else if eq .Theme "dark"}}Dark{{else}}System{{end}}">
     {{- if eq .Theme "light"}}{{template "icon-light"}}{{else if eq .Theme "dark"}}{{template "icon-dark"}}{{else}}{{template "icon-auto"}}{{end -}}
   </button>
   <div id="theme-menu" class="menu" popover>
-    <form method="post" action="/theme" aria-label="Theme" hx-boost="false">
+    <form method="post" action="/theme" aria-label="Theme" hx-boost="false" data-pick-theme>
       <input type="hidden" name="back" value="{{.Here}}">
       <button type="submit" name="to" value="auto"{{if not .Theme}} class="on" aria-current="true"{{end}}>{{template "icon-auto"}}System</button>
       <button type="submit" name="to" value="light"{{if eq .Theme "light"}} class="on" aria-current="true"{{end}}>{{template "icon-light"}}Light</button>
