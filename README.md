@@ -169,23 +169,34 @@ Listing and closing need a review token; filing works with either.
 
 To manage the backlog *from* an agent (triage from your desktop, say), add the same
 config with a **review** token instead — that unlocks `todo_list`, `todo_get`,
-`todo_update`, `todo_close`, and `todo_scopes`.
+`todo_update`, `todo_close`, `todo_scopes`, and `todo_flairs`.
 
 ## The tools
 
 | Tool | Token role | Does |
 |------|------|------|
-| `todo_add {title, body?, scope?, source?}` | publish + review | File an item. Filing the same title+scope twice while open returns the existing id with `duplicate: true` instead of a second copy. |
-| `todo_list {scope?, state?, q?}` | review | Read the backlog. `state`: `open` (default), `done`, `dropped`, `all`; `q` searches title and body. |
+| `todo_add {title, body?, scope?, source?, flairs?}` | publish + review | File an item. Filing the same title+scope twice while open returns the existing id with `duplicate: true` instead of a second copy. |
+| `todo_list {scope?, flair?, state?, q?}` | review | Read the backlog. `state`: `open` (default), `done`, `dropped`, `all`; `flair` keeps the items that carry it; `q` searches title, body and flairs. |
 | `todo_get {id}` | review | One item, with the images its body shows (see [Images](#images)). |
-| `todo_update {id, title?, body?, scope?, state?}` | review | Edit anything; `state: "open"` reopens a closed item. |
+| `todo_update {id, title?, body?, scope?, flairs?, state?}` | review | Edit anything; `flairs` replaces the whole set, and `[]` clears it; `state: "open"` reopens a closed item. |
 | `todo_close {id, outcome?, reason?}` | review | Close with a verdict: `done` (default) or `dropped`. `reason` is appended to the body. |
 | `todo_scopes {}` | review | The scopes in use, with open counts. |
+| `todo_flairs {}` | review | Every flair in use, with open counts, most used first. |
 
 `scope` is a freeform grouping label ("hopbox", "personal", "idea") — lowercased,
 never a fixed list. It is the web page's organising idea: each scope gets a panel,
 and a scope is a filter rather than a place, so clicking its name narrows the page
 to it. When names drift apart, rename one into the other on the page and they merge.
+
+`flairs` say what kind of work an item is: `bug`, `art`, `gameplay`, `infra`,
+`docs`. An item can have several. A flair is free text, lowercased and trimmed like
+a scope, with each run of spaces, tabs or line breaks inside it made one space; an
+item has at most 10, each at most 40 bytes, with no commas and no control or
+invisible characters. Agents are
+told to set flairs when they file an item, and to reuse a flair from `todo_flairs`
+rather than invent a near-duplicate (`bugs` next to `bug`). A publish token cannot
+read `todo_flairs`, so its instructions suggest common words instead. When
+`todo_update` has no `flairs`, the item keeps the flairs it has.
 
 Every item in a result carries `url` — its own page on the web UI, `/todo/{id}` —
 the link to hand to a person or paste into a commit message; `todo_add` returns it
@@ -218,6 +229,7 @@ The search field filters the list as you type, a quarter second after you stop.
 An empty field shows the whole list again, and Enter searches at once. Typing
 changes the page's address but does not add to the browser's history, so the
 back button leaves the search in one step instead of going through each letter.
+The search looks in titles, bodies and flair names.
 A search you start on an entry's own page opens the list, and the back button
 returns to the entry. If you have typed a drop reason or a new scope name and
 not sent it yet, the search waits, so that text is not lost; Enter searches at
@@ -304,6 +316,32 @@ two typefaces, both copied from that repository rather than restated here — ch
 value there and copy it across. Light and dark themes both ship and follow the
 operating system unless `data-theme` says otherwise. The fonts are SIL OFL and their
 licences travel with them.
+
+### Flairs
+
+A flair is a small label that says what kind of work an entry is, such as
+`bug`, `art` or `gameplay`. An entry can have several. Flairs show as small
+outlined chips with a colored dot under the entry's title, in the list (both
+row sizes), in the drawer and on the entry's own page. A flair's color comes
+from its name, so `bug` has the same color everywhere. The chip's outline and
+dot keep it different from a scope, whose color fills the space behind its name.
+
+Click a flair to show only the entries that have it. The filter shows as a pill
+in the tab row, next to any scope filter or search, and the ✕ on the pill takes
+it off. The filter stays when you change tabs, search, or open an entry. Its
+address is `/?flair=<name>`, so you can bookmark it.
+
+To set flairs, use the Flairs field in the new-entry form or in an entry's edit
+form. Type a flair and press Enter or type a comma to add it. Backspace in the
+empty field removes the flair you added last, and the ✕ on a flair removes that
+one. A flair longer than 40 bytes stays in the field with a message, and Save
+waits until you shorten it. As
+you type, the field suggests the flairs already in use, so you can pick `bug`
+instead of typing `bugs`. Without JavaScript the field is plain text: type the
+flairs separated by commas, for example `bug, gameplay`. Flairs are saved in
+lowercase. A flair that an agent changed while you were editing gets the same
+"Now on the server:" line as any other field. Editing only the title never
+changes the flairs.
 
 ### Images
 
