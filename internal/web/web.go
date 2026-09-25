@@ -178,8 +178,8 @@ func dict(pairs ...any) map[string]any {
 	return m
 }
 
-// query builds a link back into the list, keeping whichever of state, scope
-// and q are set. Templates call it rather than assembling URLs by hand.
+// query builds a link back into the list, keeping whichever of state, scope,
+// flair and q are set. Templates call it rather than assembling URLs by hand.
 func query(pairs ...string) template.URL {
 	v := url.Values{}
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -380,6 +380,7 @@ type chrome struct {
 	State   string // the list the header's search and links stay in
 	Tab     string // the tab drawn as current
 	Scope   string
+	Flair   string
 	Query   string
 	Counts  map[string]int // per state, for the tabs
 	Scopes  []store.ScopeStats
@@ -470,11 +471,12 @@ type flash struct {
 	BackState string
 	BackScope string
 	BackQuery string
+	BackFlair string
 }
 
-func flashFrom(q url.Values, backID int64, backState, backScope, backQuery string) *flash {
+func flashFrom(q url.Values, backID int64, backState, backScope, backQuery, backFlair string) *flash {
 	id, _ := strconv.ParseInt(q.Get("id"), 10, 64)
-	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope, BackQuery: backQuery}
+	f := &flash{ID: id, BackID: backID, BackState: backState, BackScope: backScope, BackQuery: backQuery, BackFlair: backFlair}
 	switch q.Get("did") {
 	case "closed":
 		f.Undo, f.Token = "/todo/undo", q.Get("undo")
@@ -662,9 +664,10 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editVi
 		state = "open"
 	}
 	scope := store.NormalizeScope(q.Get("scope"))
+	flair := store.NormalizeFlair(q.Get("flair"))
 	search := q.Get("q")
 
-	todos, err := h.store.ListTodos(store.Filter{State: state, Scope: scope, Query: search})
+	todos, err := h.store.ListTodos(store.Filter{State: state, Scope: scope, Flair: flair, Query: search})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -701,11 +704,12 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editVi
 			State:   state,
 			Tab:     state,
 			Scope:   scope,
+			Flair:   flair,
 			Query:   search,
 			Counts:  counts,
 			Scopes:  summaries,
 			Hues:    scopeHues(summaries),
-			Flash:   flashFrom(q, 0, state, scope, search),
+			Flash:   flashFrom(q, 0, state, scope, search, flair),
 			Error:   q.Get("err"),
 			Asset:   h.assetVer,
 			Seq:     seq,
@@ -794,7 +798,7 @@ func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request, edit *editVie
 			Counts: counts,
 			Scopes: scopes,
 			Hues:   scopeHues(scopes),
-			Flash:  flashFrom(q, t.ID, "", "", ""),
+			Flash:  flashFrom(q, t.ID, "", "", "", ""),
 			Error:  q.Get("err"),
 			Asset:  h.assetVer,
 			Seq:    seq,
@@ -830,7 +834,7 @@ func backURL(r *http.Request, err error, did url.Values) string {
 	if id, e := strconv.ParseInt(r.FormValue("back_id"), 10, 64); e == nil {
 		dest = fmt.Sprintf("/todo/%d", id)
 	}
-	for _, k := range []string{"state", "scope", "q", "open"} {
+	for _, k := range []string{"state", "scope", "flair", "q", "open"} {
 		if s := r.FormValue("back_" + k); s != "" && !(k == "state" && s == "open") && q.Get(k) == "" {
 			q.Set(k, s)
 		}
@@ -956,7 +960,7 @@ func (h *Handler) refused(w http.ResponseWriter, r *http.Request, id int64, why 
 	if r.FormValue("back_id") == "" {
 		dest = "/"
 		q.Set("open", strconv.FormatInt(id, 10))
-		for _, k := range []string{"state", "scope", "q"} {
+		for _, k := range []string{"state", "scope", "flair", "q"} {
 			if s := r.FormValue("back_" + k); s != "" && !(k == "state" && s == "open") {
 				q.Set(k, s)
 			}

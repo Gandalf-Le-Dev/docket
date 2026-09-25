@@ -36,9 +36,10 @@
         <form method="get" action="/" role="search">
           {{if and .State (ne .State "open")}}<input type="hidden" name="state" value="{{.State}}">{{end}}
           {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
-          <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
+          {{if .Flair}}<input type="hidden" name="flair" value="{{.Flair}}">{{end}}
+          <input type="search" name="q" value="{{.Query}}" placeholder="Search titles, bodies and flairs" aria-label="Search">
         </form>
-        <a class="btn btn--primary new" href="{{query "state" .State "scope" .Scope "q" .Query "new" "1"}}"
+        <a class="btn btn--primary new" href="{{query "state" .State "scope" .Scope "q" .Query "flair" .Flair "new" "1"}}"
            hx-swap="outerHTML show:none">{{template "icon-plus"}}<span class="words">New entry</span></a>
       </span>
       {{template "theme" .}}
@@ -79,16 +80,17 @@
 {{define "nav"}}
   <nav class="nav">
     <a class="ui{{if eq .Tab "open"}} on{{end}}" {{if eq .Tab "open"}}aria-current="page"{{end}}
-       href="{{query "scope" .Scope "q" .Query}}">Open<span class="n">{{index .Counts "open"}}</span></a>
+       href="{{query "scope" .Scope "q" .Query "flair" .Flair}}">Open<span class="n">{{index .Counts "open"}}</span></a>
     <a class="ui{{if eq .Tab "done"}} on{{end}}" {{if eq .Tab "done"}}aria-current="page"{{end}}
-       href="{{query "state" "done" "scope" .Scope "q" .Query}}">Done<span class="n">{{index .Counts "done"}}</span></a>
+       href="{{query "state" "done" "scope" .Scope "q" .Query "flair" .Flair}}">Done<span class="n">{{index .Counts "done"}}</span></a>
     <a class="ui{{if eq .Tab "dropped"}} on{{end}}" {{if eq .Tab "dropped"}}aria-current="page"{{end}}
-       href="{{query "state" "dropped" "scope" .Scope "q" .Query}}">Dropped<span class="n">{{index .Counts "dropped"}}</span></a>
+       href="{{query "state" "dropped" "scope" .Scope "q" .Query "flair" .Flair}}">Dropped<span class="n">{{index .Counts "dropped"}}</span></a>
     <span class="end">
-      {{if or .Scope .Query}}
+      {{if or .Scope .Flair .Query}}
       <span class="filters">
-        {{if .Scope}}<a class="pill pill--on{{template "tint" (index .Hues .Scope)}}" href="{{query "state" .State "q" .Query}}">{{.Scope}} ✕</a>{{end}}
-        {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope}}">“{{.Query}}” ✕</a>{{end}}
+        {{if .Scope}}<a class="pill pill--on{{template "tint" (index .Hues .Scope)}}" href="{{query "state" .State "q" .Query "flair" .Flair}}">{{.Scope}} ✕</a>{{end}}
+        {{if .Flair}}<a class="pill pill--on pill--flair {{flairHue .Flair}}" href="{{query "state" .State "scope" .Scope "q" .Query}}">{{.Flair}} ✕</a>{{end}}
+        {{if .Query}}<a class="pill pill--on" href="{{query "state" .State "scope" .Scope "flair" .Flair}}">“{{.Query}}” ✕</a>{{end}}
         <span class="ui muted">{{.Total}} match{{if ne .Total 1}}es{{end}}</span>
       </span>
       {{end}}
@@ -120,6 +122,7 @@
     <input type="hidden" name="back_state" value="{{.BackState}}">
     <input type="hidden" name="back_scope" value="{{.BackScope}}">
     <input type="hidden" name="back_q" value="{{.BackQuery}}">
+    <input type="hidden" name="back_flair" value="{{.BackFlair}}">
     <button type="submit" class="btn--quiet">Undo</button>
   </form>
   {{- end}}
@@ -132,14 +135,16 @@
   <input type="hidden" name="back_state" value="{{.State}}">
   <input type="hidden" name="back_scope" value="{{.Scope}}">
   <input type="hidden" name="back_q" value="{{.Query}}">
+  <input type="hidden" name="back_flair" value="{{.Flair}}">
 {{end}}
 
 {{/* the classes that put a scope's color behind its name; unscoped has none */}}
 {{define "tint"}}{{with .}} tint {{.}}{{end}}{{end}}
 
-{{/* an item's flairs, each an outlined chip with its color as a dot, so it
-     never reads as a scope, whose color fills behind its name */}}
-{{define "flairs"}}{{with .}}<span class="flairs">{{range .}}<span class="flair {{flairHue .}}">{{.}}</span>{{end}}</span>{{end}}{{end}}
+{{/* outlined with a dot, so a flair never reads as a scope's filled tint;
+     each narrows the list the page (S) shows, from its top as a scope does */}}
+{{define "flairs"}}{{$s := .S}}{{with .F}}<span class="flairs">{{range .}}<a class="flair {{flairHue .}}"
+  href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" .}}" title="Show only {{.}}" hx-swap="outerHTML">{{.}}</a>{{end}}</span>{{end}}{{end}}
 
 {{/* a scope with nothing open does not exist, so it is not suggested */}}
 {{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

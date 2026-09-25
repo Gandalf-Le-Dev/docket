@@ -3,12 +3,12 @@
 {{/* bodies are the writer's text: their links go where they say, as pages,
      even when they point back at this site */}}
 {{define "drawer"}}{{$t := .T}}{{$s := .S}}
-{{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID)}}
+{{$here := query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "open" (printf "%d" $t.ID)}}
 <aside class="drawer" aria-label="Entry {{$t.ID}}" hx-swap="outerHTML show:none">
   <header>
     {{if $t.Scope}}<span class="crumb{{template "tint" (index $s.Hues $t.Scope)}}">{{$t.Scope}}</span><span class="crumb">/</span>{{end}}
     <a class="self" href="/todo/{{$t.ID}}" title="Open #{{$t.ID}} on its own page" hx-swap="outerHTML">#{{$t.ID}}</a>
-    <a class="icon close" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}" aria-label="Close">✕</a>
+    <a class="icon close" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair}}" aria-label="Close">✕</a>
   </header>
 
   {{if eq $s.Do "edit"}}
@@ -51,7 +51,7 @@
         aria-describedby="retitle-hint">{{$t.Title}}</button></h1>
       <span id="retitle-hint" hidden>Edit title</span>
     </form>{{end}}
-    {{template "flairs" $t.Flairs}}
+    {{template "flairs" dict "F" $t.Flairs "S" $s}}
     <dl class="facts">
       <dt>Filed</dt><dd><time datetime="{{$t.CreatedAt}}" data-ago title="{{shortTime $t.CreatedAt}}">{{ago $t.CreatedAt}}</time></dd>
       {{if $t.Via}}<dt>By</dt><dd>{{$t.Via}}</dd>{{end}}
@@ -81,15 +81,15 @@
         {{template "back" $s}}
         <button type="submit" class="btn btn--primary">Done</button>
       </form>
-      <a class="btn btn--secondary" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "drop"}}">Drop…</a>
-      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
+      <a class="btn btn--secondary" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "open" (printf "%d" $t.ID) "do" "drop"}}">Drop…</a>
+      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
     {{else}}
       <form method="post" action="/todo/reopen" hx-swap="outerHTML show:none swap:200ms">
         <input type="hidden" name="id" value="{{$t.ID}}">
         {{template "back" $s}}
         <button type="submit" class="btn btn--secondary">Reopen</button>
       </form>
-      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
+      <a class="btn btn--ghost" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "open" (printf "%d" $t.ID) "do" "edit"}}">Edit</a>
     {{end}}
   </footer>
   {{end}}
@@ -100,7 +100,7 @@
 <aside class="drawer" aria-label="New entry" hx-swap="outerHTML show:none">
   <header>
     <span class="ui">New entry</span>
-    <a class="icon close" href="{{query "state" .State "scope" .Scope "q" .Query}}" aria-label="Close">✕</a>
+    <a class="icon close" href="{{query "state" .State "scope" .Scope "q" .Query "flair" .Flair}}" aria-label="Close">✕</a>
   </header>
   <form id="drawer-new" class="body form" method="post" action="/add" data-draft="new">
     {{template "back" .}}
@@ -117,7 +117,7 @@
   </form>
   <footer>
     <button type="submit" form="drawer-new" class="btn btn--primary">File it</button>
-    <a class="btn btn--ghost" href="{{query "state" .State "scope" .Scope "q" .Query}}">Cancel</a>
+    <a class="btn btn--ghost" href="{{query "state" .State "scope" .Scope "q" .Query "flair" .Flair}}">Cancel</a>
   </footer>
 </aside>
 {{end}}

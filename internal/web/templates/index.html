@@ -7,7 +7,7 @@
 <body hx-boost="true" hx-target="#page" hx-select="#page" hx-swap="outerHTML">
 <div id="page" data-asset="{{.Asset}}" data-seq="{{.Seq}}" data-here="{{.Here}}" class="with-drawer{{if or .New .Open}} has-drawer{{end}}{{if .Compact}} compact{{end}}">
 <div class="main">
-{{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query}}" tabindex="-1" aria-hidden="true"
+{{if or .New .Open}}<a class="backdrop" href="{{query "state" .State "scope" .Scope "q" .Query "flair" .Flair}}" tabindex="-1" aria-hidden="true"
   hx-swap="outerHTML show:none"></a>{{end}}
 <div class="band">
   {{template "header" .}}
@@ -26,7 +26,11 @@
   {{if .Query}}
     <div class="meta muted">No match</div>
     <h1 class="heading">Nothing matches “{{.Query}}”</h1>
-    <p class="body">Search covers titles and bodies, in every state.</p>
+    <p class="body">Search covers titles, bodies and flairs, in every state.</p>
+  {{else if .Flair}}
+    <div class="meta muted">No match</div>
+    <h1 class="heading">Nothing {{.State}} is flaired “{{.Flair}}”</h1>
+    <p class="body">Other tabs may hold some; the ✕ on the filter shows everything again.</p>
   {{else if eq .State "open"}}
     <div class="meta muted">Nothing filed yet</div>
     <h1 class="heading">Your agents write here</h1>
@@ -61,31 +65,32 @@
              placeholder="scope" aria-label="New name for {{$p.Name}}" autofocus
              title="Renaming to a scope that exists merges the two">
       <button type="submit" class="btn btn--primary btn--sm">Rename</button>
-      <a class="btn btn--ghost btn--sm" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query}}">Cancel</a>
+      <a class="btn btn--ghost btn--sm" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair}}">Cancel</a>
     </form>
     {{else}}
-    <a class="name{{template "tint" (index $s.Hues $p.Scope)}}" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query}}"
+    <a class="name{{template "tint" (index $s.Hues $p.Scope)}}" href="{{query "state" $s.State "scope" $p.Scope "q" $s.Query "flair" $s.Flair}}"
        hx-swap="outerHTML">{{$p.Name}}</a>
     <span class="counts">{{$p.Counts}}</span>
     <span class="tools">
-      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "new" "1" "in" $p.Scope}}">+ in {{$p.Name}}</a>
-      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "rename" $p.Name}}">Rename</a>
+      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "new" "1" "in" $p.Scope}}">+ in {{$p.Name}}</a>
+      <a class="btn--quiet" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "rename" $p.Name}}">Rename</a>
     </span>
     {{end}}
   </header>
   {{range $p.Entries}}
-    <a class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}" data-rev="{{.ID}}@{{.UpdatedAt}}"
-       href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "open" (printf "%d" .ID)}}">
+    {{/* the title's link covers the row (app.css), and the flairs, links of
+         their own, sit on it: a link cannot hold another */}}
+    <div class="entry{{if and $s.Open (eq .ID $s.Open.ID)}} on{{end}}" data-rev="{{.ID}}@{{.UpdatedAt}}">
       <span class="id">{{.ID}}</span>
       <span>
-        <span class="title">{{.Title}}</span>
-        {{template "flairs" .Flairs}}
+        <a class="title" href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" $s.Flair "open" (printf "%d" .ID)}}">{{.Title}}</a>
+        {{template "flairs" dict "F" .Flairs "S" $s}}
         {{if .Verdict}}<span class="reason">{{excerpt .Verdict}}</span>
         {{else if .Source}}<span class="src">from {{.Source}} · by {{.Via}}</span>
         {{else}}<span class="src">by {{.Via}}</span>{{end}}
       </span>
       <time class="age" datetime="{{.CreatedAt}}" data-ago title="filed {{shortTime .CreatedAt}}">{{ago .CreatedAt}}</time>
-    </a>
+    </div>
   {{end}}
 </section>
 {{end}}

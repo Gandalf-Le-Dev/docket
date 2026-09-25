@@ -1620,7 +1620,9 @@ func TestFlairsShow(t *testing.T) {
 	if _, _, err := s.AddTodo("crash on load", "", "game", "test", "t", "bug", "gameplay"); err != nil {
 		t.Fatal(err)
 	}
-	chip := func(f string) string { return `<span class="flair ` + flairHue(f) + `">` + f + `</span>` }
+	chip := func(f string) *regexp.Regexp {
+		return regexp.MustCompile(`<a class="flair ` + flairHue(f) + `"\s+href="[^"]*flair=` + f + `[^"]*"[^>]*>` + f + `</a>`)
+	}
 	get := func(path string) string {
 		t.Helper()
 		resp, err := c.Get(srv.URL + path)
@@ -1632,13 +1634,13 @@ func TestFlairsShow(t *testing.T) {
 	for _, path := range []string{"/", "/?open=1", "/todo/1"} {
 		body := get(path)
 		for _, f := range []string{"bug", "gameplay"} {
-			if n := strings.Count(body, chip(f)); n < 1 || (path == "/?open=1" && n != 2) {
+			if n := len(chip(f).FindAllString(body, -1)); n < 1 || (path == "/?open=1" && n != 2) {
 				t.Fatalf("%s shows %s %d times:\n%s", path, chip(f), n, body)
 			}
 		}
 	}
 	c.Jar.SetCookies(mustURL(t, srv.URL), []*http.Cookie{{Name: densityCookie, Value: "compact"}})
-	if body := get("/"); !strings.Contains(body, `with-drawer compact"`) || !strings.Contains(body, chip("bug")) {
+	if body := get("/"); !strings.Contains(body, `with-drawer compact"`) || !chip("bug").MatchString(body) {
 		t.Fatalf("compact row lost its flairs:\n%s", body)
 	}
 	for _, f := range []string{"", "art", "infra", "a much longer flair name"} {
@@ -1655,4 +1657,73 @@ func mustURL(t *testing.T, raw string) *url.URL {
 		t.Fatal(err)
 	}
 	return u
+}
+
+// A flair narrows the list like a scope does, alongside the scope, the
+// search and the tab, shown as a pill that takes it off again; every link
+// and form on the page keeps it, and search finds flairs by name.
+func TestFilterByFlair(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	s.AddTodo("crash on load", "", "game", "test", "t", "bug", "gameplay")
+	s.AddTodo("sprite sheet", "", "game", "test", "t", "art")
+	s.AddTodo("deploy script", "", "ops", "test", "t", "bug", "infra")
+	get := func(path string) string {
+		t.Helper()
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	shows := func(path string, want ...string) string {
+		t.Helper()
+		body := get(path)
+		for _, title := range []string{"crash on load", "sprite sheet", "deploy script"} {
+			if strings.Contains(body, ">"+title+"</a>") != slices.Contains(want, title) {
+				t.Fatalf("%s: showing %q is wrong, want only %q:\n%s", path, title, want, body)
+			}
+		}
+		return body
+	}
+	shows("/?flair=BUG", "crash on load", "deploy script")
+	shows("/?flair=bug&scope=game", "crash on load")
+	shows("/?flair=bug&q=deploy", "deploy script")
+	shows("/?q=gamepl", "crash on load")
+	shows("/?flair=bug&state=done")
+	body := shows("/?flair=bug&scope=game&q=crash", "crash on load")
+	for _, want := range []string{
+		`<input type="hidden" name="flair" value="bug">`,
+		`class="pill pill--on pill--flair ` + flairHue("bug") + `" href="/?q=crash&amp;scope=game">bug ✕</a>`,
+		`href="/?flair=bug&amp;q=crash">game ✕</a>`,
+		`href="/?flair=bug&amp;scope=game">“crash” ✕</a>`,
+		`href="/?flair=bug&amp;q=crash&amp;scope=game&amp;state=done">Done`,
+		`href="/?flair=bug&amp;open=1&amp;q=crash&amp;scope=game">crash on load</a>`,
+		`href="/?flair=gameplay&amp;q=crash&amp;scope=game" title="Show only gameplay" hx-swap="outerHTML">gameplay</a>`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("filtered page lacks %s:\n%s", want, body)
+		}
+	}
+	if body := get("/?flair=bug&open=3"); !strings.Contains(body, `<input type="hidden" name="back_flair" value="bug">`) {
+		t.Fatalf("the drawer's forms forget the flair:\n%s", body)
+	}
+	if body := get("/todo/1"); !strings.Contains(body, `href="/?flair=bug" title="Show only bug"`) {
+		t.Fatalf("an entry's page links its flairs to the whole list:\n%s", body)
+	}
+
+	// An action taken on a narrowed list comes back to it.
+	resp, err := c.PostForm(srv.URL+"/todo/close", url.Values{"id": {"1"}, "outcome": {"done"},
+		"back_state": {"open"}, "back_scope": {"game"}, "back_flair": {"bug"}, "back_q": {""}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readAll(t, resp)
+	if q := resp.Request.URL.Query(); q.Get("flair") != "bug" || q.Get("scope") != "game" {
+		t.Fatalf("close landed on %s", resp.Request.URL)
+	}
+	if body := get("/?flair=bug&scope=game"); !strings.Contains(body, "Nothing open is flaired “bug”") {
+		t.Fatalf("empty flair filter:\n%s", body)
+	}
 }
