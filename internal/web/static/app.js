@@ -1,7 +1,9 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
 // the text as the marker the server draws; a swap that leaves what it
-// brought out of sight scrolls to it; ages like "3h ago" keep counting; and
-// a page refreshes itself when an item changes anywhere (see live). Bodies
+// brought out of sight scrolls to it; ages like "3h ago" keep counting; the
+// search runs as it is typed; a title edits in place; the forms keep drafts;
+// an action's report leaves the address bar once shown; and a page
+// refreshes itself when an item changes anywhere (see live). Bodies
 // arrive with htmx swaps as well as with the page, so every listener sits on
 // the document and finds its field when the event comes, rather than
 // binding to fields once at load.

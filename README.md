@@ -211,7 +211,17 @@ second, and the rows that changed light up briefly. A page never updates while
 you are typing in one of its forms: a small "Updates waiting" note appears
 instead, and the update comes when you save, cancel, or leave the form
 unchanged. A page in a background tab updates when you come back to it. If the
-server restarts, the page reconnects and updates once.
+server restarts, the page reconnects and updates once. Ages such as "3h ago"
+also count up by themselves while the page stays open.
+
+The search field in the header filters the list as you type, a quarter second
+after you stop. An empty field shows the whole list again, and Enter searches at
+once. Typing changes the page's address but does not add to the browser's
+history, so the back button leaves the search in one step instead of going
+through each letter. A search you start on an entry's own page opens the list,
+and the back button returns to the entry. If you have typed a drop reason or a new
+scope name and not sent it yet, the search waits, so that text is not lost; Enter
+searches at once.
 
 Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope
@@ -227,7 +237,8 @@ outside the drawer closes it.
 What an action did shows for a few seconds in a small message at the foot of the
 window. After Done or Drop it has an Undo button, which puts the entry back exactly
 as it was, body included. Undo works for a day, and only until anything else changes
-the entry or it is closed again.
+the entry or it is closed again. The message is not kept in the page's address,
+so a reload or a bookmark does not show it again.
 Reopen, on a closed entry, is different: it keeps the verdict in the body as
 history.
 
@@ -235,6 +246,29 @@ Every form opens in place, from a URL like the drawer. New entry puts its form i
 the drawer (`/?new=1`). Edit and Drop turn the entry into its form in the drawer or
 on its page (`do=edit`, `do=drop`). Rename turns a panel's name into an input
 (`/?rename=<scope>`). Renaming to a scope that exists merges the two.
+
+To fix only a title, click it, in the drawer or on the entry's page. With the
+keyboard, tab to the title and press Enter. The title turns into a field. Enter,
+or a click somewhere else, saves the title and nothing else, so a body or scope
+that an agent changed meanwhile stays as the agent left it. Escape puts the title
+back unchanged. If the server refuses the title (a title can be up to 500 bytes),
+the field opens again with what you typed, next to the reason. The Edit button
+still opens the full form.
+
+The body field grows as you type until it fills most of the window, then it
+scrolls.
+
+What you type in the new-entry form or in an entry's edit form is kept in the
+browser as a draft. If you close the drawer, reload the page, or a save fails,
+the form shows your text again when it opens next, with a "Draft restored" line
+and a Discard button. Only the fields you typed in come back. The other fields
+show the entry as it is now. The drawer and the entry's page share one draft per
+entry. If the entry changed on the server after you started the draft, the line
+says so. The fields you did not type in already show that change, but a field you
+did type in shows your text, not the server's, so check it before you save.
+Saving clears the draft; Cancel keeps it. A draft is deleted after 7 days, when
+the images it shows may be gone from the server. Drafts stay on that device, and
+a browser that does not allow storage simply keeps none.
 
 Each scope has a color, shown behind its name wherever the name appears. Colors
 follow the order in which scopes came into use, so the first eight scopes never
