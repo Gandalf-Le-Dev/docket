@@ -27,7 +27,7 @@
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
 // here. Auth is the review token, entered once per device and kept in a cookie
-// until Sign out, in the header's theme menu, clears it.
+// until Sign out, in the header, clears it.
 package web
 
 import (

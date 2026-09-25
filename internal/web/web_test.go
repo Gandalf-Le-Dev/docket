@@ -111,8 +111,9 @@ func TestHTMXGoesToLoginWhole(t *testing.T) {
 	}
 }
 
-// Every signed-in page's header offers Sign out, as a plain form that works
-// without script and leaves the browser signed out on the login page.
+// Every signed-in page's header offers Sign out as its own button, a plain
+// form that works without script and leaves the browser signed out on the
+// login page; the theme menu holds only the themes.
 func TestSignOutInHeader(t *testing.T) {
 	srv, s, review, _ := newEnv(t)
 	c := client(t)
@@ -120,15 +121,21 @@ func TestSignOutInHeader(t *testing.T) {
 	if _, _, err := s.AddTodo("an entry", "", "pilot", "test", "t"); err != nil {
 		t.Fatal(err)
 	}
-	signOut := regexp.MustCompile(`(?s)<div id="theme-menu" class="menu" popover>.*` +
-		`<form method="post" action="/logout" data-sign-out>\s*<button type="submit">.*Sign out</button>`)
+	header := regexp.MustCompile(`(?s)<header class="hdr">.*?</header>`)
+	menu := regexp.MustCompile(`(?s)<form id="theme-menu" class="menu" popover .*?</form>`)
+	signOut := regexp.MustCompile(`<form method="post" action="/logout" data-sign-out>\s*` +
+		`<button type="submit" class="icon sign-out" title="Sign out" aria-label="Sign out"><svg`)
 	for _, path := range []string{"/", "/?open=1", "/todo/1"} {
 		resp, err := c.Get(srv.URL + path)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if body := readAll(t, resp); !signOut.MatchString(body) {
-			t.Fatalf("%s has no sign-out in its header:\n%s", path, body)
+		body := readAll(t, resp)
+		if !signOut.MatchString(header.FindString(body)) {
+			t.Fatalf("%s has no sign-out button in its header:\n%s", path, body)
+		}
+		if m := menu.FindString(body); m == "" || strings.Contains(m, "/logout") {
+			t.Fatalf("%s: the theme menu should hold only the themes:\n%s", path, m)
 		}
 	}
 	resp, err := c.PostForm(srv.URL+"/logout", nil)

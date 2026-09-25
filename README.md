@@ -295,8 +295,8 @@ follow the order in which scopes came into use, so the first eight scopes never
 share one. A switch in the tab row turns on compact rows, with one line
 per entry. A switch in the header sets the theme: follow the system, light, or dark.
 With JavaScript the new theme shows at once, without reloading the page. Both
-choices are kept in a cookie on the device. The theme switch's menu also has
-Sign out, which ends the session on the device and returns to the sign-in page.
+choices are kept in a cookie on the device. Sign out, the button beside the
+theme switch, ends the session on the device and returns to the sign-in page.
 
 The look is the [mroc design system](https://github.com/Gandalf-Le-Dev/mroc-design-system):
 `internal/web/static/app.css` holds its tokens and `internal/web/static/fonts/` its

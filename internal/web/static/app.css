@@ -168,10 +168,12 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .bar > [role="search"] { width: 260px; min-width: 0; }
 .hdr input[type="search"] { width: 100%; font-size: 13px; font-weight: 500; }
 .new svg { display: none; }
-.theme-pick { width: var(--control-height); height: var(--control-height); flex: none; anchor-name: --theme; }
+.theme-pick, .sign-out { width: var(--control-height); height: var(--control-height); flex: none; }
+.theme-pick { anchor-name: --theme; }
 .new { flex: none; }
+.hdr [data-sign-out] { display: flex; flex: none; }
 /* the brand's icon spec: Lucide, 20px, 1.5px stroke, square caps and joins */
-.theme-pick svg, .menu svg, .new svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5;
+.theme-pick svg, .sign-out svg, .menu svg, .new svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5;
   stroke-linecap: square; stroke-linejoin: miter; flex: none; }
 /* above the phone layout only, so the bar fixed to a phone's foot is never
    inside a contained box */
@@ -182,7 +184,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 }
 /* below this the search would cut its own placeholder short: New entry
    gives up its words for the + the phone's bar shows */
-@container (width < 484px) {
+@container (width < 520px) {
   .bar .new { width: var(--control-height); padding: 0; }
   .new svg { display: block; }
   .new .words { position: absolute; width: 1px; height: 1px; overflow: hidden;
@@ -192,8 +194,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .menu { min-width: 180px; padding: var(--space-2); border: var(--hairline) solid var(--border);
   border-radius: var(--radius-lg); background: var(--surface-raised); box-shadow: var(--shadow-overlay);
   color: var(--ink); }
-.menu:popover-open, .menu form { display: flex; flex-direction: column; gap: 2px; }
-.menu hr { width: 100%; margin: var(--space-1) 0; border: 0; border-top: var(--hairline) solid var(--border); }
+.menu:popover-open { display: flex; flex-direction: column; gap: 2px; }
 /* without anchor positioning the popover keeps its default, centered */
 @supports (position-area: bottom) {
   .menu { position-anchor: --theme; position-area: bottom span-left; inset: auto; margin: 6px 0 0; }
