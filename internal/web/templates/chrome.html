@@ -1,7 +1,7 @@
 {{/* No history cache: back refetches, so it shows the backlog as it is now
      and no copy of it is left in the browser's storage. */}}
 {{define "head"}}<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="htmx-config" content='{"historyCacheSize":0,"allowEval":false,"allowScriptTags":false,"includeIndicatorStyles":false}'>
 <link rel="stylesheet" href="/static/app.css?v={{.Asset}}">
 <script src="/static/htmx.min.js?v={{.Asset}}" defer></script>
@@ -28,13 +28,17 @@
   <header class="hdr">
     <a class="wm" href="/" aria-label="docket">{{template "wordmark" .Wink}}</a>
     <span class="right">
-      <form method="get" action="/" role="search">
-        {{if and .State (ne .State "open")}}<input type="hidden" name="state" value="{{.State}}">{{end}}
-        {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
-        <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
-      </form>
-      <a class="btn btn--primary" href="{{query "state" .State "scope" .Scope "q" .Query "new" "1"}}"
-         hx-swap="outerHTML show:none">New entry</a>
+      {{/* one copy at every width, which a narrow screen pins to its foot
+           (app.css), so app.js keeps a single search field's state */}}
+      <span class="bar">
+        <form method="get" action="/" role="search">
+          {{if and .State (ne .State "open")}}<input type="hidden" name="state" value="{{.State}}">{{end}}
+          {{if .Scope}}<input type="hidden" name="scope" value="{{.Scope}}">{{end}}
+          <input type="search" name="q" value="{{.Query}}" placeholder="Search titles and bodies" aria-label="Search">
+        </form>
+        <a class="btn btn--primary new" href="{{query "state" .State "scope" .Scope "q" .Query "new" "1"}}"
+           hx-swap="outerHTML show:none">{{template "icon-plus"}}<span class="words">New entry</span></a>
+      </span>
       {{template "theme" .}}
     </span>
   </header>
@@ -44,6 +48,8 @@
 {{define "icon-auto"}}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>{{end}}
 {{define "icon-light"}}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>{{end}}
 {{define "icon-dark"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>{{end}}
+{{/* Lucide's plus */}}
+{{define "icon-plus"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M12 5v14"/></svg>{{end}}
 {{/* Lucide's log-out */}}
 {{define "icon-sign-out"}}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/></svg>{{end}}
 

@@ -71,6 +71,10 @@ html {
    the swap already keeps the scroll where it was. */
 html { overflow-anchor: none; }
 * { box-sizing: border-box; }
+/* viewport-fit=cover lays the page under a notch and home bar: surfaces reach
+   the edges, and each gutter adds the inset so content keeps out of it */
+html { --inset-l: env(safe-area-inset-left, 0px); --inset-r: env(safe-area-inset-right, 0px);
+  --inset-b: env(safe-area-inset-bottom, 0px); }
 body { margin: 0; }
 a { color: var(--ink); }
 :focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
@@ -139,7 +143,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
    Everything runs the window's full width; the gutter is the only margin. */
 .band { background: var(--surface-raised); }
 .hdr { --lockup: 46px; display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-5) var(--space-5) var(--space-4); }
+  padding: var(--space-5) calc(var(--space-5) + var(--inset-r)) var(--space-4) calc(var(--space-5) + var(--inset-l)); }
 .wm { font-size: var(--lockup); font-weight: 600; letter-spacing: -0.03em; line-height: 1;
   color: var(--ink); text-decoration: none; }
 /* The glyph fills 40 of its 48 units, so a box of 0.66em draws it at about
@@ -158,10 +162,12 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   40%, 55% { transform: scaleY(0.08); }
 }
 .hdr .right { margin-left: auto; display: flex; gap: var(--space-2); align-items: center; }
+.hdr .bar { display: flex; gap: var(--space-2); align-items: center; }
 .hdr input[type="search"] { width: 260px; font-size: 13px; font-weight: 500; }
+.new svg { display: none; }
 .theme-pick { width: var(--control-height); height: var(--control-height); anchor-name: --theme; }
 /* the brand's icon spec: Lucide, 20px, 1.5px stroke, square caps and joins */
-.theme-pick svg, .menu svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5;
+.theme-pick svg, .menu svg, .new svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.5;
   stroke-linecap: square; stroke-linejoin: miter; flex: none; }
 .theme-pick:has(+ .menu:popover-open) { background: var(--surface-sunken); color: var(--ink); }
 .menu { min-width: 180px; padding: var(--space-2); border: var(--hairline) solid var(--border);
@@ -181,7 +187,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .menu button.on::after { content: ""; margin-left: auto; width: 16px; height: 16px; background: currentColor;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='square'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat; }
 /* fixed height: filters sit in the tab row and must never make it grow */
-.nav { display: flex; align-items: stretch; gap: var(--space-5); height: 40px; padding: 0 var(--space-5);
+.nav { display: flex; align-items: stretch; gap: var(--space-5); height: 40px;
+  padding: 0 calc(var(--space-5) + var(--inset-r)) 0 calc(var(--space-5) + var(--inset-l));
   border-bottom: var(--hairline) solid var(--border); }
 .nav > a { display: flex; align-items: center; text-decoration: none; color: var(--ink-muted);
   margin-bottom: -1px; border-bottom: 2px solid transparent; }
@@ -214,12 +221,13 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border: var(--hairline) solid var(--border); background: var(--surface-raised);
   font-size: 12px; font-weight: 500; color: var(--ink-muted); text-decoration: none; white-space: nowrap; }
 .pill--on { border-color: var(--ink); color: var(--ink); padding-right: var(--space-2); }
-.error { margin: var(--space-4) var(--space-5) 0; padding: var(--space-3) var(--space-4);
+.error { margin: var(--space-4) calc(var(--space-5) + var(--inset-r)) 0 calc(var(--space-5) + var(--inset-l)); padding: var(--space-3) var(--space-4);
   border: var(--hairline) solid var(--danger); color: var(--danger);
   border-radius: var(--radius-md); font-size: 14px; }
 
 /* --- panels: one per scope, packed into two columns by the server --- */
-.cols { display: flex; align-items: flex-start; gap: var(--space-5); padding: var(--space-5); }
+.cols { display: flex; align-items: flex-start; gap: var(--space-5);
+  padding: var(--space-5) calc(var(--space-5) + var(--inset-r)) var(--space-5) calc(var(--space-5) + var(--inset-l)); }
 .col { flex: 1; min-width: 0; }
 .panel { background: var(--surface-raised); border: var(--hairline) solid var(--border);
   border-radius: var(--radius-md); padding: var(--space-4) var(--space-5);
@@ -289,17 +297,19 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border-left: var(--hairline) solid var(--border); box-shadow: var(--shadow-overlay);
   display: flex; flex-direction: column; }
 .drawer > header { display: flex; align-items: center; gap: var(--space-2); height: 56px; flex: none;
-  padding: 0 var(--space-4) 0 var(--space-5); border-bottom: var(--hairline) solid var(--border); }
+  padding: 0 calc(var(--space-4) + var(--inset-r)) 0 var(--space-5); border-bottom: var(--hairline) solid var(--border); }
 .drawer > header .close { margin-left: auto; }
 .drawer .crumb { font-family: var(--font-mono); font-size: 12px; font-weight: 500; color: var(--ink-muted); }
 /* links are ink with a 2px underline — a page of violet links has no emphasis left */
 .drawer .self { color: var(--ink); font-family: var(--font-mono); font-size: 12px; font-weight: 500;
   text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 3px; }
-.drawer .body { padding: var(--space-5); flex: 1; overflow-y: auto; }
+.drawer .body { padding: var(--space-5) calc(var(--space-5) + var(--inset-r)) var(--space-5) var(--space-5);
+  flex: 1; overflow-y: auto; }
 .drawer .body .text { font-size: 14px; line-height: 22px; color: var(--ink);
   white-space: pre-wrap; word-break: break-word; }
 .drawer footer { display: flex; gap: var(--space-2); align-items: center; flex: none;
-  padding: var(--space-4) var(--space-5); border-top: var(--hairline) solid var(--border); }
+  padding: var(--space-4) calc(var(--space-5) + var(--inset-r)) calc(var(--space-4) + var(--inset-b)) var(--space-5);
+  border-top: var(--hairline) solid var(--border); }
 .drawer .error { margin: 0 0 var(--space-4); }
 .drawer .verdict { margin: 0 0 var(--space-4); padding: var(--space-3) var(--space-4);
   background: var(--attention-quiet); border-radius: var(--radius-md); font-size: 14px; line-height: 21px; }
@@ -307,7 +317,7 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .drop input[type="text"] { flex: 1; min-width: 0; }
 
 /* --- the entry on its own page: the text, and a column of facts beside it --- */
-.page { padding: var(--space-4) var(--space-5) var(--space-7); }
+.page { padding: var(--space-4) calc(var(--space-5) + var(--inset-r)) var(--space-7) calc(var(--space-5) + var(--inset-l)); }
 .crumbs { display: flex; align-items: center; gap: var(--space-2); height: 28px; margin-bottom: var(--space-4); }
 .crumbs a { color: var(--ink-muted); text-decoration: none; }
 .crumbs a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
@@ -337,8 +347,9 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
   border: var(--hairline) solid var(--border); border-radius: var(--radius-md); }
 
 /* --- toasts: what an action did, pinned where the list's scroll cannot hide it --- */
-.toasts { position: fixed; left: var(--space-5); bottom: var(--space-5); z-index: 1;
-  max-width: calc(100vw - 2 * var(--space-5)); }
+.toasts { position: fixed; z-index: 1; left: calc(var(--space-5) + var(--inset-l));
+  bottom: calc(var(--space-5) + var(--inset-b));
+  max-width: calc(100vw - 2 * var(--space-5) - var(--inset-l) - var(--inset-r)); }
 .toast { display: flex; gap: var(--space-3); align-items: center; min-height: 44px;
   padding: var(--space-2) var(--space-3) var(--space-2) var(--space-4);
   background: var(--surface-raised); border: var(--hairline) solid var(--border);
@@ -352,7 +363,8 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 @keyframes toast-out { to { opacity: 0; visibility: hidden; } }
 /* changes held back while a form is open: said once, in the corner the
    toasts leave free */
-.live-note { position: fixed; right: var(--space-5); bottom: var(--space-5); z-index: 1;
+.live-note { position: fixed; z-index: 1; right: calc(var(--space-5) + var(--inset-r));
+  bottom: calc(var(--space-5) + var(--inset-b));
   padding: var(--space-1) var(--space-3); font-family: var(--font-mono); font-size: 12px;
   font-weight: 500; line-height: 20px; color: var(--ink-muted); background: var(--surface-raised);
   border: var(--hairline) solid var(--border); border-radius: var(--radius-lg); }
@@ -387,14 +399,15 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .attach .upload-status { font-size: 12px; line-height: 16px; color: var(--danger); }
 textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2px; }
 .empty { display: flex; flex-direction: column; align-items: center; text-align: center;
-  gap: var(--space-3); padding: var(--space-8) var(--space-5); }
+  gap: var(--space-3); padding: var(--space-8) calc(var(--space-5) + var(--inset-r)) var(--space-8) calc(var(--space-5) + var(--inset-l)); }
 .empty .eye { color: var(--border-strong); }
 .empty p { margin: 0; max-width: 46ch; color: var(--ink-muted); }
 .login { max-width: 420px; margin: 0 auto; padding: var(--space-8) var(--space-5); }
 .login input { width: 100%; margin-bottom: var(--space-4); }
 
 @media (max-width: 860px) {
-  .cols { flex-direction: column; padding: var(--space-4); gap: 0; }
+  .cols { flex-direction: column; gap: 0;
+    padding: var(--space-4) calc(var(--space-4) + var(--inset-r)) var(--space-4) calc(var(--space-4) + var(--inset-l)); }
   .col { width: 100%; }
   .col:empty { display: none; }
   .panel { margin-bottom: var(--space-4); }
@@ -407,22 +420,41 @@ textarea.drop-target { outline: 2px dashed var(--focus-ring); outline-offset: 2p
   .drawer { order: -1; width: 100%; height: auto; position: static; border-left: 0;
     border-bottom: var(--hairline) solid var(--border); box-shadow: none; }
   .drawer .body { overflow: visible; }
-  .hdr { --lockup: 32px; gap: var(--space-2); padding: var(--space-4); }
+  .drawer > header, .drawer .body { padding-left: calc(var(--space-5) + var(--inset-l)); }
+  .drawer footer { padding: var(--space-4) calc(var(--space-5) + var(--inset-r)) var(--space-4)
+      calc(var(--space-5) + var(--inset-l)); }
+  .hdr { --lockup: 32px; gap: var(--space-2);
+    padding: var(--space-4) calc(var(--space-4) + var(--inset-r)) var(--space-4) calc(var(--space-4) + var(--inset-l)); }
   .wm { white-space: nowrap; }
-  /* the search field gives up width before anything spills off the side */
-  .hdr .right { min-width: 0; }
-  .hdr .right > * { flex: none; }
-  .hdr .right > [role="search"] { flex: 0 1 140px; min-width: 0; }
-  .hdr input[type="search"] { width: 100%; }
-  .nav { gap: var(--space-4); padding: 0 var(--space-4); }
+  /* at the foot, in the thumb's reach; the page's end and focus keep clear of it */
+  html { --bar-room: calc(var(--control-height) + 2 * var(--space-2) + var(--hairline) + var(--inset-b));
+    scroll-padding-bottom: var(--bar-room); }
+  .hdr .bar { position: fixed; z-index: 1; left: 0; right: 0; bottom: 0;
+    padding: var(--space-2) calc(var(--space-4) + var(--inset-r)) calc(var(--space-2) + var(--inset-b))
+      calc(var(--space-4) + var(--inset-l));
+    background: var(--surface-raised); border-top: var(--hairline) solid var(--border); }
+  /* the backdrop under the list would take a tap between its controls */
+  .has-drawer > .main .bar { pointer-events: auto; }
+  .bar > [role="search"] { flex: 1; min-width: 0; }
+  /* below 16px iOS Safari zooms the page into a field it focuses */
+  .hdr .bar input[type="search"] { width: 100%; font-size: 16px; }
+  .bar .new { flex: none; width: var(--control-height); padding: 0; }
+  .new svg { display: block; }
+  .new .words { position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap; }
+  .with-drawer > .main { padding-bottom: var(--bar-room); }
+  .page { padding-bottom: calc(var(--space-7) + var(--bar-room)); }
+  .nav { gap: var(--space-4); padding: 0 calc(var(--space-4) + var(--inset-r)) 0 calc(var(--space-4) + var(--inset-l)); }
   /* a long filter is cut short rather than pushing the row past the window */
   .nav .pill { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis;
     line-height: calc(var(--control-height-sm) - 2 * var(--hairline)); }
   .doc { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); padding: var(--space-5); }
   .facts { padding: var(--space-4) 0 0; border-left: 0; border-top: var(--hairline) solid var(--border); }
   .nav .filters .ui, .nav .seg { display: none; }
-  .toasts { left: var(--space-4); bottom: var(--space-4); max-width: calc(100vw - 2 * var(--space-4)); }
-  .live-note { right: var(--space-4); bottom: var(--space-4); }
+  .toasts { left: calc(var(--space-4) + var(--inset-l)); bottom: calc(var(--bar-room) + var(--space-2));
+    max-width: calc(100vw - 2 * var(--space-4) - var(--inset-l) - var(--inset-r)); }
+  .live-note { right: calc(var(--space-4) + var(--inset-r));
+    bottom: calc(var(--bar-room) + var(--space-2)); }
 }
 /* Without hover a panel's tools could never be found, so they stay in view,
    and the header wraps them below rather than squeeze the name and counts.

@@ -214,14 +214,18 @@ unchanged. A page in a background tab updates when you come back to it. If the
 server restarts, the page reconnects and updates once. Ages such as "3h ago"
 also count up by themselves while the page stays open.
 
-The search field in the header filters the list as you type, a quarter second
-after you stop. An empty field shows the whole list again, and Enter searches at
-once. Typing changes the page's address but does not add to the browser's
-history, so the back button leaves the search in one step instead of going
-through each letter. A search you start on an entry's own page opens the list,
-and the back button returns to the entry. If you have typed a drop reason or a new
-scope name and not sent it yet, the search waits, so that text is not lost; Enter
-searches at once.
+The search field filters the list as you type, a quarter second after you stop.
+An empty field shows the whole list again, and Enter searches at once. Typing
+changes the page's address but does not add to the browser's history, so the
+back button leaves the search in one step instead of going through each letter.
+A search you start on an entry's own page opens the list, and the back button
+returns to the entry. If you have typed a drop reason or a new scope name and
+not sent it yet, the search waits, so that text is not lost; Enter searches at
+once.
+
+The search field and New entry sit in the header. On a narrow screen, such as a
+phone, they move to a bar at the foot of the window, within reach of a thumb,
+and New entry shows as a +.
 
 Every scope with something open is a panel. The panels pack into two columns, tallest first, so a
 quiet project does not leave a hole. Every panel shows all of its entries. A scope

@@ -147,6 +147,102 @@ func TestSignOutInHeader(t *testing.T) {
 	}
 }
 
+// Every page has one search form and one New entry, together in the bar a
+// narrow screen pins to its foot: a second copy would split the search's
+// state between two fields. New entry keeps the view it opens from, and its
+// words, which a narrow screen hides behind a +, stay its accessible name.
+func TestSearchAndNewEntryShareOneBar(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	if _, _, err := s.AddTodo("an entry", "", "pilot", "test", "t"); err != nil {
+		t.Fatal(err)
+	}
+	searchForm := regexp.MustCompile(`<form\b[^>]*\brole="search"`)
+	newLink := regexp.MustCompile(`<a\b[^>]*\bclass="[^"]*\bnew\b[^"]*"[^>]*>`)
+	href := regexp.MustCompile(`\bhref="([^"]*)"`)
+	svg := regexp.MustCompile(`<svg\b[^>]*>`)
+	for path, want := range map[string]url.Values{
+		"/":                                  {"new": {"1"}},
+		"/?open=1":                           {"new": {"1"}},
+		"/?new=1":                            {"new": {"1"}},
+		"/?state=done&scope=pilot&q=nothing": {"new": {"1"}, "state": {"done"}, "scope": {"pilot"}, "q": {"nothing"}},
+		"/todo/1":                            {"new": {"1"}},
+	} {
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := readAll(t, resp)
+		bar := element(body, `<span class="bar">`)
+		if bar == "" {
+			t.Fatalf("%s has no bar:\n%s", path, body)
+		}
+		if n, in := len(searchForm.FindAllString(body, -1)), len(searchForm.FindAllString(bar, -1)); n != 1 || in != 1 {
+			t.Fatalf("%s has %d search forms, %d in the bar:\n%s", path, n, in, body)
+		}
+		if n := len(newLink.FindAllString(body, -1)); n != 1 {
+			t.Fatalf("%s has %d New entry links", path, n)
+		}
+		tag := newLink.FindString(bar)
+		if tag == "" {
+			t.Fatalf("%s: New entry is not in the bar:\n%s", path, bar)
+		}
+		link := element(bar, tag)
+		if !strings.Contains(link, `<span class="words">New entry</span>`) {
+			t.Fatalf("%s: New entry lost its words:\n%s", path, link)
+		}
+		for _, icon := range svg.FindAllString(link, -1) {
+			if !strings.Contains(icon, `aria-hidden="true"`) {
+				t.Fatalf("%s: New entry's icon would be read out: %s", path, icon)
+			}
+		}
+		m := href.FindStringSubmatch(tag)
+		if m == nil {
+			t.Fatalf("%s: New entry has no link: %s", path, tag)
+		}
+		u, err := url.Parse(html.UnescapeString(m[1]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if u.Path != "/" || u.Query().Encode() != want.Encode() {
+			t.Fatalf("%s: New entry goes to %s, want /?%s", path, u, want.Encode())
+		}
+	}
+}
+
+// element returns the element that begins with start in doc, through its
+// matching close tag, or "" when doc has no such element.
+func element(doc, start string) string {
+	i := strings.Index(doc, start)
+	if i < 0 {
+		return ""
+	}
+	name := strings.TrimLeft(strings.Fields(start)[0], "<")
+	name = strings.TrimRight(name, ">")
+	open := regexp.MustCompile(`<` + name + `[\s>]`)
+	closeTag := "</" + name + ">"
+	depth := 0
+	for j := i; j < len(doc); {
+		o := open.FindStringIndex(doc[j:])
+		c := strings.Index(doc[j:], closeTag)
+		if c < 0 {
+			return ""
+		}
+		if o != nil && o[0] < c {
+			depth++
+			j += o[1]
+			continue
+		}
+		depth--
+		j += c + len(closeTag)
+		if depth == 0 {
+			return doc[i:j]
+		}
+	}
+	return ""
+}
+
 func TestPublishTokenRejected(t *testing.T) {
 	srv, _, _, publish := newEnv(t)
 	c := client(t)
