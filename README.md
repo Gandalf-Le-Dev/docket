@@ -270,6 +270,15 @@ Saving clears the draft; Cancel keeps it. A draft is deleted after 7 days, when
 the images it shows may be gone from the server. Drafts stay on that device, and
 a browser that does not allow storage simply keeps none.
 
+A save never overwrites a change that you have not seen. If the entry changed
+after you opened its edit form or its title field, for example because an agent
+edited it, the save is refused. The edit form opens again with the reason, also
+without JavaScript. The fields you changed keep your text. The fields you did not
+change show the entry as it is now. Under each field that someone else changed, a
+"Now on the server:" line shows its new value. Look it over, then save again. A
+title edited on its own is refused only when the title itself changed, not the
+body or scope.
+
 Each scope has a color, shown behind its name wherever the name appears. Colors
 follow the order in which scopes came into use, so the first eight scopes never
 share one. A switch in the tab row turns on compact rows, with one line

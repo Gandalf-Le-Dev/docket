@@ -318,12 +318,43 @@ func (s *Store) ListTodos(state, scope, query string) ([]Todo, error) {
 	return todos, rows.Err()
 }
 
-// TodoUpdate carries the fields to change; nil means leave alone.
+// Rev names an item's version exactly: any write that changes what it holds
+// changes it, even two within the second updated_at counts in.
+func (t Todo) Rev() string {
+	sum := sha256.New()
+	for _, f := range []string{t.Title, t.Body, t.Scope, t.State, t.UpdatedAt, t.ClosedAt} {
+		sum.Write([]byte(f))
+		sum.Write([]byte{0})
+	}
+	return hex.EncodeToString(sum.Sum(nil)[:8])
+}
+
+// TitleRev names the title's version alone, for a form that edits only the
+// title and has no business with changes to the rest.
+func (t Todo) TitleRev() string {
+	sum := sha256.Sum256([]byte(t.Title))
+	return hex.EncodeToString(sum[:8])
+}
+
+// TodoUpdate carries the fields to change; nil means leave alone. A non-empty
+// IfRev makes the update apply only to the item at that Rev, and IfTitleRev
+// only to the item with that TitleRev, so a form opened before someone else's
+// change cannot overwrite it unseen.
 type TodoUpdate struct {
-	Title *string
-	Body  *string
-	Scope *string
-	State *string
+	Title      *string
+	Body       *string
+	Scope      *string
+	State      *string
+	IfRev      string
+	IfTitleRev string
+}
+
+// ChangedError refuses an update whose IfRev or IfTitleRev the item has moved
+// past.
+type ChangedError struct{ ID int64 }
+
+func (e ChangedError) Error() string {
+	return fmt.Sprintf("#%d changed while you were editing it: look it over, then save again", e.ID)
 }
 
 func (s *Store) UpdateTodo(id int64, u TodoUpdate) (t Todo, err error) {
@@ -331,6 +362,9 @@ func (s *Store) UpdateTodo(id int64, u TodoUpdate) (t Todo, err error) {
 		before, err := getTodo(tx, id)
 		if err != nil {
 			return nil, err
+		}
+		if (u.IfRev != "" && u.IfRev != before.Rev()) || (u.IfTitleRev != "" && u.IfTitleRev != before.TitleRev()) {
+			return nil, ChangedError{ID: id}
 		}
 		t, err = updateTodo(tx, before, u)
 		return []Change{{ID: id, Op: stateOp(before.State, t.State)}}, err

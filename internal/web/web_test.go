@@ -16,6 +16,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -773,6 +774,136 @@ func TestUpdateOnlyWhatIsPosted(t *testing.T) {
 	post(url.Values{"id": {"1"}, "title": {"new title"}, "body": {""}, "scope": {""}})
 	if got, _ := s.GetTodo(id); got.Body != "" || got.Scope != "" {
 		t.Fatalf("fields posted empty were not saved empty: %+v", got)
+	}
+}
+
+// Both edit forms post the entry's Rev as base, the title's field the title's
+// own TitleRev. A save from a form opened before an agent's change is refused
+// with the form itself, not a redirect, holding what was typed, the new base
+// and the entry's value beside each field that differs; a title save ignores
+// changes to the rest. A save at the current base goes through.
+func TestUpdateRefusedWhenStale(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("title", "body", "pilot", "test", "t")
+	opened, _ := s.GetTodo(id)
+	get := func(path string) string {
+		t.Helper()
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	for path, want := range map[string]string{
+		"/?open=1":         `name="base_title" value="` + opened.TitleRev() + `"`,
+		"/todo/1":          `name="base_title" value="` + opened.TitleRev() + `"`,
+		"/?open=1&do=edit": `name="base" value="` + opened.Rev() + `"`,
+		"/todo/1?do=edit":  `name="base" value="` + opened.Rev() + `"`,
+	} {
+		if body := get(path); !strings.Contains(body, want) {
+			t.Fatalf("%s lacks %s:\n%s", path, want, body)
+		}
+	}
+
+	agent := "the agent's body"
+	if _, err := s.UpdateTodo(id, store.TodoUpdate{Body: &agent}); err != nil {
+		t.Fatal(err)
+	}
+	post := func(form url.Values, htmx bool) (*http.Response, string) {
+		t.Helper()
+		req, _ := http.NewRequest("POST", srv.URL+"/todo/update", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if htmx {
+			req.Header.Set("HX-Request", "true")
+		}
+		resp, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, readAll(t, resp)
+	}
+	now, _ := s.GetTodo(id)
+	// The form posts what its fields held when it opened, as a browser would.
+	form := func(title, body, scope string, extra ...string) url.Values {
+		v := url.Values{
+			"id": {"1"}, "base": {opened.Rev()}, "title": {title}, "body": {body}, "scope": {scope},
+			"orig_title": {opened.Title}, "orig_body": {opened.Body}, "orig_scope": {opened.Scope}, "back_do": {"edit"},
+		}
+		for i := 0; i+1 < len(extra); i += 2 {
+			v.Set(extra[i], extra[i+1])
+		}
+		return v
+	}
+	for back, pushed := range map[string]string{"back_open": "/?do=edit&open=1", "back_id": "/todo/1?do=edit"} {
+		// the scope typed differs only in case, which is no difference
+		resp, body := post(form("mine", "my body", "Pilot", back, "1"), true)
+		for _, want := range []string{
+			"#1 changed while you were editing it",
+			`name="title" value="mine"`,
+			">my body</textarea>",
+			`name="base" value="` + now.Rev() + `"`,
+			`name="orig_body" value="the agent&#39;s body"`,
+			`<span>Now on the server:</span> the agent&#39;s body`,
+			"data-unsaved",
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s refusal lacks %q:\n%s", back, want, body)
+			}
+		}
+		// the line marks what someone else changed, and only the agent did
+		if strings.Count(body, "Now on the server:") != 1 {
+			t.Fatalf("%s refusal notes the wrong fields:\n%s", back, body)
+		}
+		if resp.Request.URL.Path != "/todo/update" || resp.Header.Get("HX-Push-Url") != pushed {
+			t.Fatalf("%s refusal: at %s, HX-Push-Url %q", back, resp.Request.URL, resp.Header.Get("HX-Push-Url"))
+		}
+	}
+	if got, _ := s.GetTodo(id); got != now {
+		t.Fatalf("stale save wrote: %+v", got)
+	}
+
+	// A field the user left takes the agent's text, with the line under it;
+	// the one they changed keeps theirs, with none.
+	_, body := post(form("mine", opened.Body, opened.Scope, "back_open", "1"), false)
+	title := body[strings.Index(body, `name="title"`):strings.Index(body, `name="body"`)]
+	if !strings.Contains(body, ">the agent&#39;s body</textarea>") || strings.Contains(title, "Now on the server:") ||
+		strings.Count(body, "Now on the server:") != 1 {
+		t.Fatalf("user-only title change over an agent's body:\n%s", body)
+	}
+
+	// The page is the posted entry's, whatever the back fields name.
+	other, _, _ := s.AddTodo("other entry", "", "pilot", "test", "t")
+	resp, body := post(form("mine", "my body", "pilot", "back_open", strconv.FormatInt(other, 10)), true)
+	if !strings.Contains(body, `aria-label="Entry 1"`) || strings.Contains(body, `aria-label="Entry 2"`) ||
+		resp.Header.Get("HX-Push-Url") != "/?do=edit&open=1" {
+		t.Fatalf("refusal rendered for back_open, not id: HX-Push-Url %q\n%s", resp.Header.Get("HX-Push-Url"), body)
+	}
+
+	// The title's own base survives the agent's body change.
+	_, body = post(url.Values{"id": {"1"}, "base_title": {opened.TitleRev()}, "title": {"renamed"}, "back_id": {"1"}}, false)
+	if !strings.Contains(body, "Saved #1.") {
+		t.Fatalf("title save refused over a body change:\n%s", body)
+	}
+	if got, _ := s.GetTodo(id); got.Title != "renamed" || got.Body != agent {
+		t.Fatalf("title save: %+v", got)
+	}
+	// It does not survive a change to the title, and comes back as the edit
+	// form with the title typed and the body as the entry has it.
+	_, body = post(url.Values{"id": {"1"}, "base_title": {opened.TitleRev()}, "title": {"mine again"}, "back_id": {"1"}}, false)
+	for _, want := range []string{`name="title" value="mine again"`, `<span>Now on the server:</span> renamed`, ">the agent&#39;s body</textarea>"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("stale title save lacks %q:\n%s", want, body)
+		}
+	}
+
+	cur, _ := s.GetTodo(id)
+	if _, body = post(url.Values{"id": {"1"}, "base": {cur.Rev()}, "title": {"mine"}, "body": {"my body"}, "scope": {"pilot"}}, false); !strings.Contains(body, "Saved #1.") {
+		t.Fatalf("current save refused:\n%s", body)
+	}
+	if got, _ := s.GetTodo(id); got.Title != "mine" || got.Body != "my body" {
+		t.Fatalf("current save: %+v", got)
 	}
 }
 

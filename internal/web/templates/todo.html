@@ -22,17 +22,22 @@
   <article class="doc">
     {{if eq .Do "edit"}}
     <form class="main form" method="post" action="/todo/update"
-          data-draft="edit-{{.Item.ID}}-{{.Item.CreatedAt}}" data-updated="{{.Item.UpdatedAt}}">
+          data-draft="edit-{{.Item.ID}}-{{.Item.CreatedAt}}"{{if .Edit}} data-unsaved{{end}}>
       <input type="hidden" name="id" value="{{.Item.ID}}">
+      <input type="hidden" name="base" value="{{.Item.Rev}}">
+      {{template "orig" .Item}}
       <input type="hidden" name="back_id" value="{{.Item.ID}}">
       <input type="hidden" name="back_do" value="edit">
       <label for="e-title">Title</label>
-      <input type="text" id="e-title" name="title" value="{{.Item.Title}}" required autofocus>
+      <input type="text" id="e-title" name="title" value="{{.Edit.Field "title" .Item.Title}}" required autofocus>
+      {{template "now" .Edit.Now "title"}}
       <label for="e-body">Body</label>
-      <textarea id="e-body" name="body" rows="14">{{.Item.Body}}</textarea>
+      <textarea id="e-body" name="body" rows="14">{{.Edit.Field "body" .Item.Body}}</textarea>
       {{template "attach" "e-body"}}
+      {{template "now" .Edit.Now "body"}}
       <label for="e-scope">Scope</label>
-      <input type="text" id="e-scope" name="scope" value="{{.Item.Scope}}" list="scopes">
+      <input type="text" id="e-scope" name="scope" value="{{.Edit.Field "scope" .Item.Scope}}" list="scopes">
+      {{template "now" .Edit.Now "scope"}}
       <div class="acts">
         <button type="submit" class="btn btn--primary">Save</button>
         <a class="btn btn--ghost" href="/todo/{{.Item.ID}}">Cancel</a>
@@ -43,6 +48,8 @@
       {{if eq .Do "drop"}}<h1 class="display-m">{{.Item.Title}}</h1>
       {{else}}<form class="retitle" method="post" action="/todo/update">
         <input type="hidden" name="id" value="{{.Item.ID}}">
+        <input type="hidden" name="base_title" value="{{.Item.TitleRev}}">
+        <input type="hidden" name="orig_title" value="{{.Item.Title}}">
         <input type="hidden" name="back_id" value="{{.Item.ID}}">
         <h1 class="display-m"><button type="button" data-retitle
           aria-describedby="retitle-hint">{{.Item.Title}}</button></h1>

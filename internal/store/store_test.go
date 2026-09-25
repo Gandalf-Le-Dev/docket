@@ -60,6 +60,49 @@ func TestAddAndDedupe(t *testing.T) {
 	}
 }
 
+// An update with IfRev applies only to the version it names; a change made
+// meanwhile, even within the same second, refuses it and stays.
+func TestUpdateIfRev(t *testing.T) {
+	s := testStore(t)
+	id, _, _ := s.AddTodo("title", "body", "", "test", "t")
+	opened, _ := s.GetTodo(id)
+	agent := "the agent's body"
+	if _, err := s.UpdateTodo(id, TodoUpdate{Body: &agent}); err != nil {
+		t.Fatal(err)
+	}
+	mine := "my title"
+	_, err := s.UpdateTodo(id, TodoUpdate{Title: &mine, IfRev: opened.Rev()})
+	if !errors.As(err, &ChangedError{}) || !strings.Contains(err.Error(), "changed while you were editing") {
+		t.Fatalf("stale update: %v", err)
+	}
+	now, _ := s.GetTodo(id)
+	if now.Title != "title" || now.Body != agent {
+		t.Fatalf("stale update wrote: %+v", now)
+	}
+	got, err := s.UpdateTodo(id, TodoUpdate{Title: &mine, IfRev: now.Rev()})
+	if err != nil || got.Title != mine || got.Body != agent {
+		t.Fatalf("current update: %+v %v", got, err)
+	}
+	if got.Rev() == now.Rev() {
+		t.Fatal("Rev did not change with the title")
+	}
+
+	// A title's own version ignores the rest of the entry, and still catches
+	// a change to the title.
+	agent = "the agent's second body"
+	if _, err := s.UpdateTodo(id, TodoUpdate{Body: &agent}); err != nil {
+		t.Fatal(err)
+	}
+	again := "my title, again"
+	if got, err = s.UpdateTodo(id, TodoUpdate{Title: &again, IfTitleRev: now.TitleRev()}); !errors.As(err, &ChangedError{}) {
+		t.Fatalf("title changed since, yet: %+v %v", got, err)
+	}
+	cur, _ := s.GetTodo(id)
+	if got, err = s.UpdateTodo(id, TodoUpdate{Title: &again, IfTitleRev: cur.TitleRev()}); err != nil || got.Body != agent {
+		t.Fatalf("title save over a body change: %+v %v", got, err)
+	}
+}
+
 func TestValidation(t *testing.T) {
 	s := testStore(t)
 	var ve ValidationError

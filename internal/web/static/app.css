@@ -376,6 +376,11 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 .form textarea { field-sizing: content; min-height: 176px; max-height: 60vh; }
 .attach { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .attach[hidden] { display: none; }
+.server-now { margin: calc(-1 * var(--space-2)) 0 var(--space-4); padding: var(--space-2) var(--space-3);
+  max-height: 10em; overflow-y: auto; white-space: pre-wrap; word-break: break-word;
+  font-size: 13px; line-height: 20px; color: var(--ink-muted);
+  border-left: 2px solid var(--border-strong); }
+.server-now > span { font-weight: 500; color: var(--ink); }
 .draft-note { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
   margin: 0 0 var(--space-4); font-size: 13px; line-height: 20px; color: var(--ink-muted); }
 .attach .upload-status { font-size: 12px; line-height: 16px; color: var(--danger); }

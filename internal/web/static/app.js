@@ -211,18 +211,28 @@
   }
   pruneDrafts();
 
-  // A draft remembers which version of the entry it started from, so its
-  // note can say when the entry has changed since.
+  // A draft remembers which version of the entry it started from (the base
+  // an edit form posts, see web.go's update), so its note can say when the
+  // entry has changed since.
+  const baseOf = (form) => form.elements.namedItem("base")?.value ?? "";
+  // What the entry holds, as the edit form posts it in orig_<field>: a
+  // refused save's form shows the typed text as its fields' own, and a draft
+  // must hold every field that differs from the entry, not from that text.
+  // The new-entry form has no entry; its fields start as it was served.
+  function savedOf(form, field) {
+    const orig = form.elements.namedItem(`orig_${field.name}`);
+    return orig ? orig.value.replace(/\r\n/g, "\n") : field.defaultValue;
+  }
   function saveDraft(form) {
     if (!form.dataset.draft) return;
     const typed = {};
     for (const name of draftFields) {
       const field = form.elements.namedItem(name);
       const value = field && field.value.replace(uploading, "");
-      if (field && value !== field.defaultValue) typed[name] = value;
+      if (field && value !== savedOf(form, field)) typed[name] = value;
     }
     if (!Object.keys(typed).length) return dropDraft(form);
-    const base = readDraft(form)?.base ?? form.dataset.updated ?? "";
+    const base = readDraft(form)?.base ?? baseOf(form);
     try {
       // when typing began: no image uploaded into it is older, so it goes first
       const at = readDraft(form)?.at ?? Date.now();
@@ -238,13 +248,14 @@
     for (const name of draftFields) {
       const field = form.elements.namedItem(name);
       const value = draft.fields[name];
-      if (!field || typeof value !== "string" || value === field.defaultValue) continue;
+      if (!field || typeof value !== "string" || value === field.value) continue;
       field.value = value;
       if (field instanceof HTMLTextAreaElement) fit(field);
       restored = true;
     }
-    if (!restored) return dropDraft(form);
-    const changed = form.dataset.updated && draft.base && draft.base !== form.dataset.updated;
+    // a refused save's form already shows the text the draft holds
+    if (!restored) return form.hasAttribute("data-unsaved") || dropDraft(form);
+    const changed = draft.base && baseOf(form) && draft.base !== baseOf(form);
     const text = document.createElement("span");
     const discard = document.createElement("button");
     discard.type = "button";
@@ -255,7 +266,7 @@
       for (const name of draftFields) {
         const field = form.elements.namedItem(name);
         if (!field) continue;
-        field.value = field.defaultValue;
+        field.value = savedOf(form, field);
         if (field instanceof HTMLTextAreaElement) fit(field);
       }
       note.remove();
@@ -323,8 +334,10 @@
   // The title's button turns it into a field in place. Enter or leaving it
   // saves the title alone (web.go's update keeps the body and scope as they
   // are now); Escape, or saving it unchanged or empty, puts the title back,
-  // and focus returns to the button. A save the server refuses opens the
-  // field again with what was typed, beside the reason.
+  // and focus returns to the button. A title the server refuses, too long
+  // say, opens the field again with what was typed, beside the reason; a
+  // save refused because the title changed meanwhile comes back as the full
+  // edit form instead (web.go's refused).
   const maxTitle = 500; // store.MaxTitleBytes, counted in characters here
   function retitle(button, typed) {
     const heading = button.closest("h1");
@@ -521,10 +534,12 @@
   }
   // Text typed into a form that keeps no draft, a drop's reason or a scope's
   // new name, would go with the page a search brings; the typed search waits
-  // until that text is sent or emptied, and each change or focus leaving
-  // that form asks again. Enter still searches at once.
+  // while that text is there, and asks again at each change to it or when
+  // focus moves. So does a refused save's form, whose text is saved nowhere.
+  // Enter still searches at once.
   let searchHeld = false;
   function unsaved() {
+    if (document.querySelector("#page form[data-unsaved]")) return true;
     for (const form of document.querySelectorAll("#page form:not([role=search], [data-draft])")) {
       for (const field of form.querySelectorAll("input[type=text], textarea")) {
         if (field.value !== field.defaultValue) return true;
@@ -649,7 +664,8 @@
     // is open but untouched and unfocused is not held: the refresh brings it
     // back with the item's new values. The search field holds only while it
     // has text its search has not applied yet, which lasts until the search
-    // runs: that search brings a newer page than the refresh would.
+    // runs: that search brings a newer page than the refresh would. A refused
+    // save's form holds whatever its fields say: its text is not saved.
     function held() {
       const active = document.activeElement;
       if (popoverOpen()) return true;
@@ -659,7 +675,7 @@
           if (q && q.value !== q.defaultValue) return true;
           continue;
         }
-        if ((form.dataset.uploads || "0") !== "0") return true;
+        if ((form.dataset.uploads || "0") !== "0" || form.hasAttribute("data-unsaved")) return true;
         const fields = form.querySelectorAll("input[type=text], textarea");
         if (!fields.length) continue;
         if (active && (form.contains(active) || active.form === form)) return true;

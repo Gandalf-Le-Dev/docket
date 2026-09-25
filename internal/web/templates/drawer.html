@@ -13,19 +13,24 @@
 
   {{if eq $s.Do "edit"}}
   <form id="drawer-edit" class="body form" method="post" action="/todo/update"
-        data-draft="edit-{{$t.ID}}-{{$t.CreatedAt}}" data-updated="{{$t.UpdatedAt}}">
+        data-draft="edit-{{$t.ID}}-{{$t.CreatedAt}}"{{if $s.Edit}} data-unsaved{{end}}>
     <input type="hidden" name="id" value="{{$t.ID}}">
+    <input type="hidden" name="base" value="{{$t.Rev}}">
+    {{template "orig" $t}}
     {{template "back" $s}}
     <input type="hidden" name="back_open" value="{{$t.ID}}">
     <input type="hidden" name="back_do" value="edit">
     {{template "form-error" $s}}
     <label for="d-title">Title</label>
-    <input type="text" id="d-title" name="title" value="{{$t.Title}}" required autofocus>
+    <input type="text" id="d-title" name="title" value="{{$s.Edit.Field "title" $t.Title}}" required autofocus>
+    {{template "now" $s.Edit.Now "title"}}
     <label for="d-body">Body</label>
-    <textarea id="d-body" name="body" rows="12">{{$t.Body}}</textarea>
+    <textarea id="d-body" name="body" rows="12">{{$s.Edit.Field "body" $t.Body}}</textarea>
     {{template "attach" "d-body"}}
+    {{template "now" $s.Edit.Now "body"}}
     <label for="d-scope">Scope</label>
-    <input type="text" id="d-scope" name="scope" value="{{$t.Scope}}" list="scopes">
+    <input type="text" id="d-scope" name="scope" value="{{$s.Edit.Field "scope" $t.Scope}}" list="scopes">
+    {{template "now" $s.Edit.Now "scope"}}
   </form>
   <footer>
     <button type="submit" form="drawer-edit" class="btn btn--primary">Save</button>
@@ -37,6 +42,8 @@
     {{if eq $s.Do "drop"}}<h1 class="heading" style="margin: 0 0 var(--space-2)">{{$t.Title}}</h1>
     {{else}}<form class="retitle" method="post" action="/todo/update">
       <input type="hidden" name="id" value="{{$t.ID}}">
+      <input type="hidden" name="base_title" value="{{$t.TitleRev}}">
+      <input type="hidden" name="orig_title" value="{{$t.Title}}">
       {{template "back" $s}}
       <input type="hidden" name="back_open" value="{{$t.ID}}">
       <h1 class="heading" style="margin: 0 0 var(--space-2)"><button type="button" data-retitle
@@ -112,6 +119,20 @@
   </footer>
 </aside>
 {{end}}
+
+{{/* what an edit form's fields held when it opened: a refused save keeps
+     the fields the user changed and takes the rest from the entry as it is
+     now, and app.js keeps a draft of what differs from them (web.go's
+     newEditView) */}}
+{{define "orig"}}
+    <input type="hidden" name="orig_title" value="{{.Title}}">
+    <input type="hidden" name="orig_body" value="{{.Body}}">
+    <input type="hidden" name="orig_scope" value="{{.Scope}}">
+{{- end}}
+
+{{/* under a field of a refused save's form (web.go's editView): the entry's
+     value, where someone else changed it after the form opened */}}
+{{define "now"}}{{with .}}<div class="server-now"><span>Now on the server:</span> {{.}}</div>{{end}}{{end}}
 
 {{/* while the drawer is open, a failed action's message goes in it, beside
      the form it came back to, where it is in sight whatever the list's scroll */}}

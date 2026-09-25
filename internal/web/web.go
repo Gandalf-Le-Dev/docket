@@ -29,6 +29,7 @@
 package web
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
@@ -532,9 +533,77 @@ type indexData struct {
 	Total  int
 	Open   *todoView // the drawer's entry, when ?open= named one
 	Do     string    // "edit" or "drop": the drawer's entry as that form
+	Edit   *editView // what that form shows in place of the entry's fields
 	New    bool      // the drawer holds the new-entry form
 	In     string    // the scope that form starts in
 	Rename string    // the panel whose name is an input, by Name()
+}
+
+// editView is an edit form whose save was refused because the entry moved on
+// (see update): it shows what was typed, not the entry's fields, and beside
+// each field that differs, what the entry holds now. The page is rendered in
+// the refusal's answer, so the typed text survives without script or storage.
+type editView struct {
+	Title, Body, Scope string
+	Error              string
+	now                map[string]string
+}
+
+// Field is what a form field shows: the typed text, or the entry's own.
+func (e *editView) Field(name, saved string) string {
+	if e == nil {
+		return saved
+	}
+	return map[string]string{"title": e.Title, "body": e.Body, "scope": e.Scope}[name]
+}
+
+// Now is the entry's value of a field that differs from what was typed, or
+// "" where they agree.
+func (e *editView) Now(name string) string {
+	if e == nil {
+		return ""
+	}
+	return e.now[name]
+}
+
+// newEditView merges what r posted into cur. The form posts each field twice,
+// as typed and as it was when the form opened (orig_<field>): a field the
+// user changed keeps the typed text, one they left takes cur's, and a field
+// someone else changed meanwhile is noted with cur's value. A form that does
+// not post a field's original shows the typed text, noted wherever cur
+// differs from it.
+func newEditView(cur store.Todo, r *http.Request, reason string) *editView {
+	e := &editView{Title: cur.Title, Body: cur.Body, Scope: cur.Scope, Error: reason, now: map[string]string{}}
+	lines := func(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
+	for _, f := range []struct {
+		name   string
+		field  *string
+		same   func(string) string
+		server string
+	}{
+		{"title", &e.Title, strings.TrimSpace, cur.Title},
+		{"body", &e.Body, lines, lines(cur.Body)},
+		{"scope", &e.Scope, store.NormalizeScope, cur.Scope},
+	} {
+		typed, orig := posted(r, f.name), posted(r, "orig_"+f.name)
+		switch {
+		case typed == nil:
+			continue
+		case orig == nil:
+			*f.field = *typed
+			if f.same(*typed) != f.server {
+				e.now[f.name] = cmp.Or(f.server, "(empty)")
+			}
+			continue
+		}
+		if f.same(*typed) != f.same(*orig) {
+			*f.field = *typed
+		}
+		if f.same(*orig) != f.server {
+			e.now[f.name] = cmp.Or(f.server, "(empty)")
+		}
+	}
+	return e
 }
 
 // pack lays the panels into two columns the way a mason would: tallest first,
@@ -569,7 +638,9 @@ func pack(panels []panelView) (left, right []panelView) {
 	return left, right
 }
 
-func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) index(w http.ResponseWriter, r *http.Request) { h.indexPage(w, r, nil) }
+
+func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editView) {
 	seq := h.store.Seq()
 	q := r.URL.Query()
 	state := q.Get("state")
@@ -648,13 +719,17 @@ func (h *Handler) index(w http.ResponseWriter, r *http.Request) {
 			data.Do = mode(q.Get("do"), t.State)
 		}
 	}
+	if edit != nil {
+		data.Edit, data.Error = edit, edit.Error
+	}
 	h.render(w, "index.html", data)
 }
 
 type itemData struct {
 	chrome
 	Item todoView
-	Do   string // "edit" or "drop": the entry as that form, in place
+	Do   string    // "edit" or "drop": the entry as that form, in place
+	Edit *editView // what that form shows in place of the entry's fields
 }
 
 // mode is the form an entry is showing. Drop only means something while the
@@ -669,7 +744,9 @@ func mode(do, state string) string {
 
 // item is an item's own page — the target of its url — with the same
 // actions as the list.
-func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) item(w http.ResponseWriter, r *http.Request) { h.itemPage(w, r, nil) }
+
+func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request, edit *editView) {
 	seq := h.store.Seq()
 	id, err := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	if err != nil {
@@ -696,7 +773,7 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	h.render(w, "todo.html", itemData{
+	data := itemData{
 		chrome: chrome{
 			State:  "open",
 			Tab:    t.State,
@@ -713,7 +790,11 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 		},
 		Item: newTodoView(t, true, "", ""),
 		Do:   mode(q.Get("do"), t.State),
-	})
+	}
+	if edit != nil {
+		data.Edit, data.Error = edit, edit.Error
+	}
+	h.render(w, "todo.html", data)
 }
 
 // back redirects to where the action came from — the item's own page when
@@ -722,6 +803,11 @@ func (h *Handler) item(w http.ResponseWriter, r *http.Request) {
 // validation message, so the page can say so. A failed form comes back
 // still open (back_do, back_new), so the message lands beside it.
 func back(w http.ResponseWriter, r *http.Request, err error, did url.Values) {
+	http.Redirect(w, r, backURL(r, err, did), http.StatusSeeOther)
+}
+
+// backURL is where back sends the answer to r.
+func backURL(r *http.Request, err error, did url.Values) string {
 	q := url.Values{}
 	if err == nil {
 		q = did
@@ -756,7 +842,7 @@ func back(w http.ResponseWriter, r *http.Request, err error, did url.Values) {
 	if len(q) > 0 {
 		dest += "?" + q.Encode()
 	}
-	http.Redirect(w, r, dest, http.StatusSeeOther)
+	return dest
 }
 
 func formID(r *http.Request) (int64, error) {
@@ -815,15 +901,70 @@ func (h *Handler) undo(w http.ResponseWriter, r *http.Request) {
 
 // update changes only the fields the form posts. The title edited in place
 // posts a title alone, and must leave the body and scope as they are now,
-// not as the page last saw them: an agent may have changed them since.
+// not as the page last saw them: an agent may have changed them since. An
+// edit form posts the Rev it was rendered at as base, the title's field the
+// TitleRev as base_title, and either is refused when the entry has moved on
+// (see refused).
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
+	title, body, scope := posted(r, "title"), posted(r, "body"), posted(r, "scope")
 	if err == nil {
 		_, err = h.store.UpdateTodo(id, store.TodoUpdate{
-			Title: posted(r, "title"), Body: posted(r, "body"), Scope: posted(r, "scope"),
+			Title: title, Body: body, Scope: scope,
+			IfRev: r.PostForm.Get("base"), IfTitleRev: r.PostForm.Get("base_title"),
 		})
 	}
+	var changed store.ChangedError
+	if errors.As(err, &changed) {
+		h.refused(w, r, id, changed)
+		return
+	}
 	back(w, r, err, did("saved", id))
+}
+
+// refused answers a save the entry moved past with the page the form came
+// from, not a redirect to it: the edit form, holding the text just posted
+// merged into the entry as it is now, and the entry's new base (see
+// newEditView). A redirect would have only the entry to show, and without
+// script or storage the typed text would be gone.
+//
+// The page is named by the posted id alone, never by back_open or back_id, so
+// no post can put one entry's text in another entry's form; back_id only says
+// the form was on the entry's own page, and the list's filters come along.
+func (h *Handler) refused(w http.ResponseWriter, r *http.Request, id int64, why error) {
+	cur, err := h.store.GetTodo(id)
+	if err != nil {
+		back(w, r, err, nil)
+		return
+	}
+	q := url.Values{"do": {"edit"}}
+	dest := fmt.Sprintf("/todo/%d", id)
+	if r.FormValue("back_id") == "" {
+		dest = "/"
+		q.Set("open", strconv.FormatInt(id, 10))
+		for _, k := range []string{"state", "scope", "q"} {
+			if s := r.FormValue("back_" + k); s != "" && !(k == "state" && s == "open") {
+				q.Set(k, s)
+			}
+		}
+	}
+	dest += "?" + q.Encode()
+	page := r.Clone(r.Context())
+	page.Method, page.RequestURI = http.MethodGet, dest
+	if page.URL, err = url.Parse(dest); err != nil {
+		back(w, r, err, nil)
+		return
+	}
+	if r.Header.Get("HX-Request") == "true" {
+		w.Header().Set("HX-Push-Url", here(page))
+	}
+	edit := newEditView(cur, r, why.Error())
+	if strings.HasPrefix(page.URL.Path, "/todo/") {
+		page.SetPathValue("id", strconv.FormatInt(id, 10))
+		h.itemPage(w, page, edit)
+		return
+	}
+	h.indexPage(w, page, edit)
 }
 
 // posted is a form field's value, or nil when the form has no such field.
