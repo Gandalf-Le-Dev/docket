@@ -146,5 +146,9 @@
 {{define "flairs"}}{{$s := .S}}{{with .F}}<span class="flairs">{{range .}}<a class="flair {{flairHue .}}"
   href="{{query "state" $s.State "scope" $s.Scope "q" $s.Query "flair" .}}" title="Show only {{.}}" hx-swap="outerHTML">{{.}}</a>{{end}}</span>{{end}}{{end}}
 
+{{/* every flair ever used: one whose items are all closed is still worth
+     reusing over a near-duplicate */}}
+{{define "flairs-list"}}<datalist id="flairs-in-use">{{range .InUse}}<option value="{{.Flair}}">{{end}}</datalist>{{end}}
+
 {{/* a scope with nothing open does not exist, so it is not suggested */}}
 {{define "scopes-list"}}<datalist id="scopes">{{range .Scopes}}{{if and .Scope .Open}}<option value="{{.Scope}}">{{end}}{{end}}</datalist>{{end}}

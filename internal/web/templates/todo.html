@@ -39,6 +39,10 @@
       <label for="e-scope">Scope</label>
       <input type="text" id="e-scope" name="scope" value="{{.Edit.Field "scope" .Item.Scope}}" list="scopes">
       {{template "now" .Edit.Now "scope"}}
+      <label for="e-flairs">Flairs</label>
+      <input type="text" id="e-flairs" name="flairs" value="{{.Edit.Field "flairs" .Item.FlairText}}" data-flairs
+             autocomplete="off" placeholder="bug, art, gameplay">
+      {{template "now" .Edit.Now "flairs"}}
       <div class="acts">
         <button type="submit" class="btn btn--primary">Save</button>
         <a class="btn btn--ghost" href="/todo/{{.Item.ID}}">Cancel</a>
@@ -105,6 +109,7 @@
   </article>
 </div>
 {{template "scopes-list" .}}
+{{template "flairs-list" .}}
 </div>
 {{template "toasts" .}}
 </body>

@@ -1727,3 +1727,169 @@ func TestFilterByFlair(t *testing.T) {
 		t.Fatalf("empty flair filter:\n%s", body)
 	}
 }
+
+// Every form that files or edits an entry has a flairs field that works as
+// comma-separated text: the new entry, and the edit forms in the drawer and
+// on the entry's page. A save posting no flairs field, the title edited in
+// place, leaves them as they are.
+func TestEditFlairs(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	post := func(path string, form url.Values) (*http.Response, string) {
+		t.Helper()
+		resp, err := c.PostForm(srv.URL+path, form)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return resp, readAll(t, resp)
+	}
+	get := func(path string) string {
+		t.Helper()
+		resp, err := c.Get(srv.URL + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	flairs := func() []string {
+		t.Helper()
+		got, err := s.GetTodo(1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Flairs
+	}
+
+	if body := get("/?new=1"); !strings.Contains(body, `name="flairs" data-flairs`) {
+		t.Fatalf("new entry has no flairs field:\n%s", body)
+	}
+	post("/add", url.Values{"title": {"crash"}, "scope": {"game"}, "flairs": {" Bug, art,,bug "}})
+	if got := flairs(); !reflect.DeepEqual(got, []string{"art", "bug"}) {
+		t.Fatalf("filed with %q", got)
+	}
+
+	for _, path := range []string{"/?open=1&do=edit", "/todo/1?do=edit"} {
+		body := get(path)
+		for _, want := range []string{
+			`name="flairs" value="art, bug" data-flairs`,
+			`name="orig_flairs" value="art, bug"`,
+			`<datalist id="flairs-in-use"><option value="art"><option value="bug"></datalist>`,
+		} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s lacks %s:\n%s", path, want, body)
+			}
+		}
+	}
+
+	cur, _ := s.GetTodo(1)
+	post("/todo/update", url.Values{"id": {"1"}, "base": {cur.Rev()}, "title": {"crash"}, "body": {""},
+		"scope": {"game"}, "flairs": {"gameplay, Bug"}, "back_id": {"1"}})
+	if got := flairs(); !reflect.DeepEqual(got, []string{"bug", "gameplay"}) {
+		t.Fatalf("edited to %q", got)
+	}
+	cur, _ = s.GetTodo(1)
+	post("/todo/update", url.Values{"id": {"1"}, "base_title": {cur.TitleRev()}, "title": {"crash on load"}, "back_id": {"1"}})
+	if got := flairs(); !reflect.DeepEqual(got, []string{"bug", "gameplay"}) {
+		t.Fatalf("title save changed flairs to %q", got)
+	}
+
+	cur, _ = s.GetTodo(1)
+	_, body := post("/todo/update", url.Values{"id": {"1"}, "base": {cur.Rev()}, "flairs": {"a,b,c,d,e,f,g,h,i,j,k"},
+		"back_open": {"1"}, "back_do": {"edit"}})
+	if !strings.Contains(body, "at most 10 flairs per item") {
+		t.Fatalf("eleven flairs:\n%s", body)
+	}
+	post("/todo/update", url.Values{"id": {"1"}, "base": {cur.Rev()}, "flairs": {""}, "back_id": {"1"}})
+	if got := flairs(); len(got) != 0 {
+		t.Fatalf("emptied to %q", got)
+	}
+}
+
+// A save from a form opened before an agent changed the flairs is refused
+// like any other stale save: the flairs typed stay when they were changed,
+// the agent's are taken when they were not, and the line under the field
+// says what the entry holds now.
+func TestStaleSaveMergesFlairs(t *testing.T) {
+	srv, s, review, _ := newEnv(t)
+	c := client(t)
+	login(t, c, srv, review)
+	id, _, _ := s.AddTodo("title", "body", "game", "test", "t", "art")
+	opened, _ := s.GetTodo(id)
+	agent := []string{"bug", "art"}
+	if _, err := s.UpdateTodo(id, store.TodoUpdate{Flairs: &agent}); err != nil {
+		t.Fatal(err)
+	}
+	post := func(flairs string) string {
+		t.Helper()
+		resp, err := c.PostForm(srv.URL+"/todo/update", url.Values{
+			"id": {"1"}, "base": {opened.Rev()}, "title": {"title"}, "body": {"body"}, "scope": {"game"},
+			"flairs": {flairs}, "orig_title": {"title"}, "orig_body": {"body"}, "orig_scope": {"game"},
+			"orig_flairs": {strings.Join(opened.Flairs, ", ")}, "back_id": {"1"}, "back_do": {"edit"},
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return readAll(t, resp)
+	}
+	body := post("gameplay, art")
+	for _, want := range []string{
+		"#1 changed while you were editing it",
+		`name="flairs" value="gameplay, art"`,
+		`name="orig_flairs" value="art, bug"`,
+		`<span>Now on the server:</span> art, bug`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("refusal lacks %q:\n%s", want, body)
+		}
+	}
+	if strings.Count(body, "Now on the server:") != 1 {
+		t.Fatalf("refusal notes the wrong fields:\n%s", body)
+	}
+	// the same set spelled differently is no change of the user's
+	body = post(" ART")
+	if !strings.Contains(body, `name="flairs" value="art, bug"`) || !strings.Contains(body, "Now on the server:</span> art, bug") {
+		t.Fatalf("untouched flairs over an agent's:\n%s", body)
+	}
+	if got, _ := s.GetTodo(id); !reflect.DeepEqual(got.Flairs, []string{"art", "bug"}) {
+		t.Fatalf("stale save wrote %q", got.Flairs)
+	}
+}
+
+// app.js colors a chip added in the browser as the server will once it is
+// saved, by a port of flairHue.
+func TestFlairHueInScript(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not on PATH")
+	}
+	src, err := staticFS.ReadFile("static/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	js := string(src)
+	start, end := strings.Index(js, "  const hues = "), strings.Index(js, "  const flairList = ")
+	if start < 0 || end < start {
+		t.Fatal("app.js: flairHue not found between `const hues` and `const flairList`")
+	}
+	names := []string{"", "bug", "art", "gameplay", "infra", "docs", "a much longer flair name", "café", "ツール"}
+	input, _ := json.Marshal(names)
+	script := js[start:end] + `
+const names = JSON.parse(require("fs").readFileSync(0, "utf8"));
+console.log(JSON.stringify(names.map(flairHue)));`
+	cmd := exec.Command(node, "-e", script)
+	cmd.Stdin = bytes.NewReader(input)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("node: %v", err)
+	}
+	var got []string
+	if err := json.Unmarshal(out, &got); err != nil || len(got) != len(names) {
+		t.Fatalf("node said %q: %v", out, err)
+	}
+	for i, name := range names {
+		if got[i] != flairHue(name) {
+			t.Errorf("app.js flairHue(%q) = %q, want %q", name, got[i], flairHue(name))
+		}
+	}
+}

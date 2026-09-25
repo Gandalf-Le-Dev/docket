@@ -440,6 +440,25 @@ label { display: block; font-size: 12px; font-weight: 500; color: var(--ink-mute
 /* --- forms and empty states --- */
 .form input[type="text"], .form textarea { display: block; width: 100%; margin-bottom: var(--space-4); }
 .form textarea:has(+ .attach:not([hidden])) { margin-bottom: var(--space-2); }
+.form input[hidden] { display: none; }
+/* app.js's chip field: the chips and what is being typed share one box that
+   reads as a text field, and wraps as the chips fill it */
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1);
+  min-height: var(--control-height); margin-bottom: var(--space-4); padding: 3px var(--space-1) 3px var(--space-2);
+  background: var(--surface-raised); border: var(--hairline) solid var(--border-strong);
+  border-radius: var(--radius-md); cursor: text; }
+.chips:focus-within { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.form .chips input[type="text"] { flex: 1 1 10ch; width: auto; min-width: 10ch; height: 26px; margin: 0;
+  padding: 0 var(--space-1); border: 0; background: transparent; }
+.chips input:focus-visible { outline: none; }
+.chips .flair { height: 24px; line-height: 22px; padding-right: 0; font-size: 12px; cursor: default; }
+.chips .flair button { width: 22px; height: 22px; margin-left: 2px; padding: 0; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-muted); font-size: 10px; line-height: 22px; vertical-align: top;
+  cursor: pointer; }
+.chips .flair button:hover { background: var(--surface-sunken); color: var(--ink); }
+.chips-status { display: block; margin: calc(-1 * var(--space-3)) 0 var(--space-4);
+  font-size: 12px; line-height: 16px; color: var(--danger); }
+.chips-status:empty { display: none; }
 /* a body grows with what is typed until it would push Save out of reach,
    then scrolls; app.js does the same where field-sizing is missing */
 .form textarea { field-sizing: content; min-height: 176px; max-height: 60vh; }

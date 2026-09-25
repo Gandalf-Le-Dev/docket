@@ -1,12 +1,13 @@
 // Images pasted, dropped or picked into a body upload to /image and land in
 // the text as the marker the server draws; a swap that leaves what it
 // brought out of sight scrolls to it; ages like "3h ago" keep counting; the
-// search runs as it is typed; a title edits in place; the forms keep drafts;
-// the theme changes without a reload; an action's report leaves the address
-// bar once shown; and a page refreshes itself when an item changes anywhere
-// (see live). Bodies arrive with htmx swaps as well as with the page, so
-// every listener sits on the document and finds its field when the event
-// comes, rather than binding to fields once at load.
+// search runs as it is typed; a title edits in place; a flairs field takes
+// chips; the forms keep drafts; the theme changes without a reload; an
+// action's report leaves the address bar once shown; and a page refreshes
+// itself when an item changes anywhere (see live). Bodies arrive with htmx
+// swaps as well as with the page, so every listener sits on the document and
+// finds its field when the event comes, rather than binding to fields once
+// at load.
 (() => {
   "use strict";
 
@@ -168,6 +169,187 @@
     upload(field.ta, field.status, files);
   });
 
+  // A flairs field is comma-separated text: that is what it posts, and all
+  // it is without this script. Here it becomes chips. A comma or Enter adds
+  // what was typed, and so does leaving the field or saving; Backspace in an
+  // empty field takes off the flair added last, and each chip's button
+  // removes it. The field suggests the flairs in use (the flairs-in-use
+  // datalist). The text field stays the form's own, hidden and kept in step,
+  // so drafts, the stale-save merge and the live refresh's hold see it like
+  // any other.
+  const hues = 8; // web.go's hues
+  // A port of flairHue in web.go (FNV-1a over the name's UTF-8), so a chip
+  // added here has the color the page gives it once saved (TestFlairHueInScript).
+  function flairHue(flair) {
+    let h = 0x811c9dc5;
+    for (const b of new TextEncoder().encode(flair)) h = Math.imul(h ^ b, 0x01000193) >>> 0;
+    return `hue-${Math.floor((h * hues) / 2 ** 32)}`;
+  }
+  // store.NormalizeFlairs, less its refusals, which stay the server's
+  const flairList = (text) => [
+    ...new Set(
+      text
+        .split(",")
+        .map((f) => f.toLowerCase().split(/\s+/).filter(Boolean).join(" "))
+        .filter(Boolean),
+    ),
+  ].sort();
+  const maxFlairBytes = 40; // store.MaxFlairBytes
+  const tooLong = (flair) => new TextEncoder().encode(flair).length > maxFlairBytes;
+
+  const fieldOf = (entry) => entry.closest(".chips")?.previousElementSibling;
+  const statusOf = (field) => field.nextElementSibling?.nextElementSibling;
+
+  // The order flairs were added in this edit, oldest first, for Backspace;
+  // the chips and the text keep the sorted order the server stores.
+  const added = new WeakMap();
+  function orderOf(field) {
+    const now = flairList(field.value);
+    const was = (added.get(field) || []).filter((f) => now.includes(f));
+    const order = [...was, ...now.filter((f) => !was.includes(f))];
+    added.set(field, order);
+    return order;
+  }
+
+  function drawChips(field) {
+    const box = field.nextElementSibling;
+    if (!box || !box.matches(".chips")) return;
+    const entry = box.querySelector("input");
+    const list = flairList(field.value);
+    for (const chip of box.querySelectorAll(".flair")) chip.remove();
+    for (const flair of list) {
+      const chip = document.createElement("span");
+      chip.className = `flair ${flairHue(flair)}`;
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.textContent = "✕";
+      remove.dataset.flair = flair;
+      remove.setAttribute("aria-label", `Remove ${flair}`);
+      chip.append(flair, remove);
+      entry.before(chip);
+    }
+    box.querySelector(".chips-set").textContent = list.length ? `Flairs set: ${list.join(", ")}` : "No flairs set";
+  }
+
+  // An unchanged set leaves the text as it was, so an untouched form still
+  // matches what the entry holds.
+  function setFlairs(field, list) {
+    if (flairList(field.value).join(", ") === list.join(", ")) return;
+    field.value = list.join(", ");
+    drawChips(field);
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  // Adds what text holds, and returns what it could not: a flair over the
+  // store's limit stays typed beside the reason, rather than cut short or
+  // lost in a refused save.
+  function commitFlairs(entry, text = entry.value) {
+    const field = fieldOf(entry);
+    if (!field) return text;
+    const typed = flairList(text);
+    const long = typed.filter(tooLong);
+    const order = orderOf(field);
+    for (const f of typed) if (!long.includes(f) && !order.includes(f)) order.push(f);
+    setFlairs(field, flairList([field.value, ...typed.filter((f) => !long.includes(f))].join(",")));
+    const status = statusOf(field);
+    if (status) status.textContent = long.length ? `flair "${long[0]}" exceeds ${maxFlairBytes} bytes` : "";
+    return long.join(", ");
+  }
+
+  function chipInputs(root) {
+    for (const field of root.querySelectorAll("input[data-flairs]")) {
+      if (field.hidden) continue;
+      const box = document.createElement("div");
+      box.className = "chips";
+      const entry = document.createElement("input");
+      entry.type = "text";
+      entry.id = field.id;
+      entry.placeholder = "Add a flair";
+      entry.autocomplete = "off";
+      entry.autocapitalize = "off";
+      entry.spellcheck = false;
+      entry.setAttribute("autocorrect", "off");
+      entry.setAttribute("list", "flairs-in-use");
+      // what is set already, spoken with the field, since the chips are not in it
+      const set = document.createElement("span");
+      set.className = "chips-set";
+      set.id = `${field.id}-set`;
+      set.hidden = true;
+      entry.setAttribute("aria-describedby", set.id);
+      const status = document.createElement("span");
+      status.className = "chips-status";
+      status.setAttribute("role", "status");
+      field.removeAttribute("id");
+      field.hidden = true;
+      box.append(entry, set);
+      field.after(box, status);
+      drawChips(field);
+    }
+  }
+  chipInputs(document);
+  document.addEventListener("htmx:load", (e) => chipInputs(e.target));
+
+  const chipEntry = (el) => el instanceof HTMLInputElement && el.matches(".chips input");
+  document.addEventListener("keydown", (e) => {
+    const entry = e.target;
+    if (!chipEntry(entry) || e.isComposing) return;
+    if (e.key === "Enter" && entry.value.trim()) {
+      e.preventDefault();
+      entry.value = commitFlairs(entry);
+    } else if (e.key === "Backspace" && !entry.value) {
+      const field = fieldOf(entry);
+      const last = orderOf(field).at(-1);
+      if (!last) return;
+      e.preventDefault();
+      setFlairs(field, flairList(field.value).filter((f) => f !== last));
+    }
+  });
+  // A comma may never reach keydown (a phone's keyboard, a paste), so it is
+  // read from the text; a pick from the suggestions replaces the text whole.
+  document.addEventListener("input", (e) => {
+    const entry = e.target;
+    if (!chipEntry(entry) || e.isComposing) return;
+    const comma = entry.value.lastIndexOf(",");
+    if (comma >= 0) {
+      const left = commitFlairs(entry, entry.value.slice(0, comma));
+      entry.value = [left, entry.value.slice(comma + 1).trimStart()].filter(Boolean).join(", ");
+    } else if (e.inputType === "insertReplacementText" || e.inputType === undefined) {
+      entry.value = commitFlairs(entry);
+    }
+  });
+  document.addEventListener("focusout", (e) => {
+    if (chipEntry(e.target)) e.target.value = commitFlairs(e.target);
+  });
+  document.addEventListener("click", (e) => {
+    const remove = e.target instanceof Element && e.target.closest(".chips button[data-flair]");
+    if (remove) {
+      const box = remove.closest(".chips");
+      const field = box.previousElementSibling;
+      setFlairs(field, flairList(field.value).filter((f) => f !== remove.dataset.flair));
+      box.querySelector("input").focus();
+      return;
+    }
+    const box = e.target instanceof Element && e.target.closest(".chips");
+    if (box && e.target === box) box.querySelector("input").focus();
+  });
+  // Save takes what is still typed, as leaving the field would have, and
+  // waits while a flair is too long: that save would drop it. Capture, and
+  // stop there, since htmx submits from its own listener on the form.
+  document.addEventListener(
+    "submit",
+    (e) => {
+      if (!(e.target instanceof HTMLFormElement)) return;
+      for (const entry of e.target.querySelectorAll(".chips input")) {
+        entry.value = commitFlairs(entry);
+        if (!entry.value) continue;
+        e.preventDefault();
+        e.stopPropagation();
+        entry.focus();
+      }
+    },
+    true,
+  );
+
   // What is typed into the new-entry form or an entry's edit form is kept in
   // this browser as it is typed, and comes back when that form opens again:
   // after the drawer was closed, a reload, a failed save. The drawer and the
@@ -178,7 +360,7 @@
   // Signing out deletes every draft, and none is kept after it. Storage can
   // be missing or refuse (a private window, a full quota), and the forms then
   // work as they would without drafts.
-  const draftFields = ["title", "body", "scope"];
+  const draftFields = ["title", "body", "scope", "flairs"];
   const uploading = /!\[Uploading image \d+…\]\(\)\n?/g;
   // the server keeps an image no saved body shows for this long
   // (cmd/docket's imageGrace), so an older draft's images may be gone
@@ -264,6 +446,7 @@
       if (!field || typeof value !== "string" || value === field.value) continue;
       field.value = value;
       if (field instanceof HTMLTextAreaElement) fit(field);
+      if (field.matches("[data-flairs]")) drawChips(field);
       restored = true;
     }
     // a refused save's form already shows the text the draft holds
@@ -281,6 +464,7 @@
         if (!field) continue;
         field.value = savedOf(form, field);
         if (field instanceof HTMLTextAreaElement) fit(field);
+        if (field.matches("[data-flairs]")) drawChips(field);
       }
       note.remove();
     });

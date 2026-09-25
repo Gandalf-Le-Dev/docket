@@ -19,10 +19,11 @@
 // script fetches the page's own URL again and swaps its #page like a boosted
 // link, holding off while a form is being filled in. It also runs the search
 // as it is typed, turns a clicked title into a field that posts the title
-// alone, keeps form drafts in the browser until Sign out, changes the theme
-// without a reload, and takes an action's report (?did=...) out of the
-// address bar once its toast shows. Without either script every link and
-// form still works as a page load.
+// alone, turns a flairs field's comma-separated text into chips, keeps form
+// drafts in the browser until Sign out, changes the theme without a reload,
+// and takes an action's report (?did=...) out of the address bar once its
+// toast shows. Without either script every link and form still works as a
+// page load.
 //
 // The look is the mroc design system: tokens, type and marks come from
 // static/app.css, which is copied from that repository rather than invented
@@ -46,6 +47,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -384,6 +386,7 @@ type chrome struct {
 	Query   string
 	Counts  map[string]int // per state, for the tabs
 	Scopes  []store.ScopeStats
+	InUse   []store.FlairCount // flairs to suggest
 	Flash   *flash
 	Error   string
 	Asset   string // stylesheet and scripts fingerprint
@@ -444,6 +447,26 @@ type todoView struct {
 	Focus     bool
 	BackState string
 	BackScope string
+}
+
+// FlairText is the flairs as the form's field holds them.
+func (v todoView) FlairText() string { return strings.Join(v.Flairs, ", ") }
+
+// splitFlairs reads a flairs field: comma-separated, as typed without script
+// or as app.js's chips write it.
+func splitFlairs(text string) []string { return strings.Split(text, ",") }
+
+// sameFlairs is a flairs field as the store would keep it, so two spellings
+// of one set compare equal; unlike store.NormalizeFlairs it never refuses.
+func sameFlairs(text string) string {
+	var out []string
+	for _, f := range splitFlairs(text) {
+		if f = store.NormalizeFlair(f); f != "" && !slices.Contains(out, f) {
+			out = append(out, f)
+		}
+	}
+	slices.Sort(out)
+	return strings.Join(out, ", ")
 }
 
 func newTodoView(t store.Todo, focus bool, backState, backScope string) todoView {
@@ -560,9 +583,9 @@ type indexData struct {
 // each field that differs, what the entry holds now. The page is rendered in
 // the refusal's answer, so the typed text survives without script or storage.
 type editView struct {
-	Title, Body, Scope string
-	Error              string
-	now                map[string]string
+	Title, Body, Scope, Flairs string
+	Error                      string
+	now                        map[string]string
 }
 
 // Field is what a form field shows: the typed text, or the entry's own.
@@ -570,7 +593,7 @@ func (e *editView) Field(name, saved string) string {
 	if e == nil {
 		return saved
 	}
-	return map[string]string{"title": e.Title, "body": e.Body, "scope": e.Scope}[name]
+	return map[string]string{"title": e.Title, "body": e.Body, "scope": e.Scope, "flairs": e.Flairs}[name]
 }
 
 // Now is the entry's value of a field that differs from what was typed, or
@@ -589,7 +612,8 @@ func (e *editView) Now(name string) string {
 // not post a field's original shows the typed text, noted wherever cur
 // differs from it.
 func newEditView(cur store.Todo, r *http.Request, reason string) *editView {
-	e := &editView{Title: cur.Title, Body: cur.Body, Scope: cur.Scope, Error: reason, now: map[string]string{}}
+	curFlairs := strings.Join(cur.Flairs, ", ")
+	e := &editView{Title: cur.Title, Body: cur.Body, Scope: cur.Scope, Flairs: curFlairs, Error: reason, now: map[string]string{}}
 	lines := func(s string) string { return strings.ReplaceAll(s, "\r\n", "\n") }
 	for _, f := range []struct {
 		name   string
@@ -600,6 +624,7 @@ func newEditView(cur store.Todo, r *http.Request, reason string) *editView {
 		{"title", &e.Title, strings.TrimSpace, cur.Title},
 		{"body", &e.Body, lines, lines(cur.Body)},
 		{"scope", &e.Scope, store.NormalizeScope, cur.Scope},
+		{"flairs", &e.Flairs, sameFlairs, curFlairs},
 	} {
 		typed, orig := posted(r, f.name), posted(r, "orig_"+f.name)
 		switch {
@@ -682,6 +707,11 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editVi
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	inUse, err := h.store.Flairs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	byScope := map[string][]todoView{}
 	for _, t := range todos {
@@ -708,6 +738,7 @@ func (h *Handler) indexPage(w http.ResponseWriter, r *http.Request, edit *editVi
 			Query:   search,
 			Counts:  counts,
 			Scopes:  summaries,
+			InUse:   inUse,
 			Hues:    scopeHues(summaries),
 			Flash:   flashFrom(q, 0, state, scope, search, flair),
 			Error:   q.Get("err"),
@@ -790,6 +821,11 @@ func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request, edit *editVie
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	inUse, err := h.store.Flairs()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 	q := r.URL.Query()
 	data := itemData{
 		chrome: chrome{
@@ -797,6 +833,7 @@ func (h *Handler) itemPage(w http.ResponseWriter, r *http.Request, edit *editVie
 			Tab:    t.State,
 			Counts: counts,
 			Scopes: scopes,
+			InUse:  inUse,
 			Hues:   scopeHues(scopes),
 			Flash:  flashFrom(q, t.ID, "", "", "", ""),
 			Error:  q.Get("err"),
@@ -876,7 +913,8 @@ func (h *Handler) add(w http.ResponseWriter, r *http.Request) {
 	// token name, same as any other writer.
 	c, _ := r.Cookie(cookieName)
 	via, _, _ := h.store.Auth(c.Value)
-	id, dup, err := h.store.AddTodo(r.FormValue("title"), r.FormValue("body"), r.FormValue("scope"), "web", via)
+	id, dup, err := h.store.AddTodo(r.FormValue("title"), r.FormValue("body"), r.FormValue("scope"), "web", via,
+		splitFlairs(r.FormValue("flairs"))...)
 	// the drawer that held the form now holds what it filed
 	back(w, r, err, did("added", id, "duplicate", strconv.FormatBool(dup), "open", strconv.FormatInt(id, 10)))
 }
@@ -918,19 +956,23 @@ func (h *Handler) undo(w http.ResponseWriter, r *http.Request) {
 }
 
 // update changes only the fields the form posts. The title edited in place
-// posts a title alone, and must leave the body and scope as they are now,
-// not as the page last saw them: an agent may have changed them since. An
+// posts a title alone, and must leave the body, scope and flairs as they are
+// now, not as the page last saw them: an agent may have changed them since. An
 // edit form posts the Rev it was rendered at as base, the title's field the
 // TitleRev as base_title, and either is refused when the entry has moved on
 // (see refused).
 func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 	id, err := formID(r)
-	title, body, scope := posted(r, "title"), posted(r, "body"), posted(r, "scope")
+	u := store.TodoUpdate{
+		Title: posted(r, "title"), Body: posted(r, "body"), Scope: posted(r, "scope"),
+		IfRev: r.PostForm.Get("base"), IfTitleRev: r.PostForm.Get("base_title"),
+	}
+	if text := posted(r, "flairs"); text != nil {
+		flairs := splitFlairs(*text)
+		u.Flairs = &flairs
+	}
 	if err == nil {
-		_, err = h.store.UpdateTodo(id, store.TodoUpdate{
-			Title: title, Body: body, Scope: scope,
-			IfRev: r.PostForm.Get("base"), IfTitleRev: r.PostForm.Get("base_title"),
-		})
+		_, err = h.store.UpdateTodo(id, u)
 	}
 	var changed store.ChangedError
 	if errors.As(err, &changed) {

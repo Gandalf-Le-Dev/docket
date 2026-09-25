@@ -46,6 +46,7 @@
 {{end}}
 
 {{template "scopes-list" .}}
+{{template "flairs-list" .}}
 </div>
 {{if .New}}{{template "new-drawer" .}}
 {{else}}{{with .Open}}{{template "drawer" dict "T" . "S" $}}{{end}}{{end}}
